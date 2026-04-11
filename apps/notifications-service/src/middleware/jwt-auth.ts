@@ -2,7 +2,16 @@ import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../env';
 
-export function jwtAuth(req: Request, res: Response, next: NextFunction) {
+export interface AuthenticatedRequest extends Request {
+  auth?: {
+    sub: string;
+    email: string;
+    tenantId: string;
+    role: string;
+  };
+}
+
+export function jwtAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const raw = req.headers.authorization ?? req.headers.Authorization;
   if (typeof raw !== 'string' || !raw.startsWith('Bearer ')) {
     res.status(401).json({ message: 'Missing bearer token' });

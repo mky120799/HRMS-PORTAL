@@ -89,7 +89,7 @@ app.get('/applications', jwtAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 // POST /applications — accepts multipart/form-data (with optional resume file)
-app.post('/applications', upload.single('resume'), async (req, res) => {
+app.post('/applications', upload.single('resume'), async (req: any, res: any) => {
   const schema = z.object({
     jobId: z.string().uuid(),
     candidateName: z.string().min(1),
@@ -129,7 +129,7 @@ app.post('/applications', upload.single('resume'), async (req, res) => {
 app.patch('/applications/:id', jwtAuth, async (req: AuthenticatedRequest, res) => {
   if (req.auth!.role !== 'ADMIN') { res.status(403).json({ message: 'Admin only' }); return; }
   const { status } = req.body;
-  const app_ = await prisma.application.update({ where: { id: req.params.id }, data: { status } });
+  const app_ = await prisma.application.update({ where: { id: req.params.id as string }, data: { status } });
   res.json(app_);
 });
 

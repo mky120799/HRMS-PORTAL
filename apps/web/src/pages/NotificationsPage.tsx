@@ -6,6 +6,8 @@ import { Mail, Send, Inbox, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { api } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 
 const composeSchema = z.object({
   to: z.string().email('Enter a valid email address'),
@@ -42,8 +44,9 @@ export function NotificationsPage() {
     refetchInterval: 5000,
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ComposeForm>({
+  const { register, handleSubmit, setValue, watch, reset, formState: { errors, isSubmitting } } = useForm<ComposeForm>({
     resolver: zodResolver(composeSchema),
+    defaultValues: { body: '' }
   });
 
   const sendEmail = useMutation({
@@ -92,13 +95,15 @@ export function NotificationsPage() {
             </div>
             <div style={{ marginBottom: 20 }}>
               <label>Message</label>
-              <textarea
-                rows={8}
-                placeholder="Write your message here..."
-                {...register('body')}
-                style={{ width: '100%', padding: '10px 14px', border: '1px solid rgba(0,0,0,0.1)', borderRadius: 10, resize: 'vertical', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.6 }}
-              />
-              {errors.body && <p className="error-text">{errors.body.message}</p>}
+              <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden' }}>
+                <ReactQuill 
+                  theme="snow" 
+                  value={watch('body')} 
+                  onChange={(val) => setValue('body', val, { shouldValidate: true })}
+                  style={{ height: 200, marginBottom: 40 }}
+                />
+              </div>
+              {errors.body && <p className="error-text" style={{ marginTop: 8 }}>{errors.body.message}</p>}
             </div>
 
             <button type="submit" disabled={isSubmitting || sendEmail.isPending} style={{ width: '100%' }}>
