@@ -7,6 +7,8 @@ import { LeavePage } from './pages/LeavePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { SignupPage } from './pages/SignupPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { HiringPage } from './pages/HiringPage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -31,8 +33,10 @@ export function AppRouter() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/employees" element={<EmployeesPage />} />
         <Route path="/leave" element={<LeavePage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route element={<RequireRole allowed={['ADMIN']} />}>
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/hiring" element={<HiringPage />} />
         </Route>
       </Route>
     </Routes>

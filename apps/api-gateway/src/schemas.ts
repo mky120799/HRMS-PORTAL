@@ -8,7 +8,7 @@ export const signupBodySchema = z.object({
 });
 
 export const loginBodySchema = z.object({
-  tenantId: z.string().uuid(),
+  tenantId: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
 });

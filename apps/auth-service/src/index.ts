@@ -6,6 +6,7 @@ import { env } from './env';
 import { prisma } from './prisma';
 import { loginSchema, registerInternalSchema } from './schemas';
 import { validateBody } from './validation';
+import { jwtAuth, AuthenticatedRequest } from './middleware/jwt-auth';
 
 const app = express();
 app.use(express.json());
@@ -90,6 +91,26 @@ app.post('/internal/register', validateBody(registerInternalSchema), async (req,
     email: user.email,
     name: user.name,
     role: user.role,
+  });
+});
+
+app.get('/auth/me', jwtAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.auth!.sub;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    res.status(404).json({ message: 'User not found' });
+    return;
+  }
+
+  res.json({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    tenantId: user.tenantId,
   });
 });
 

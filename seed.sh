@@ -85,7 +85,7 @@ echo ""
 echo "📋 NOTION COPY-PASTE TABLE (ACTUAL CREDENTIALS):"
 echo ""
 echo "| Field | Value |"
-| :--- | :--- |
+echo "| :--- | :--- |"
 echo "| **Login URL** | http://localhost:5173/login |"
 echo "| **Tenant ID** | \`$TENANT_ID\` |"
 echo "| **Admin Email** | \`sarah.admin@acme.com\` |"

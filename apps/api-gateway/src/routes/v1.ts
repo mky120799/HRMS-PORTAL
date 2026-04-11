@@ -71,7 +71,7 @@ v1Router.post('/auth/signup', validateBody(signupBodySchema), async (req, res) =
       { tenantId: tenant.id, email, password, name },
       { headers: internalHeaders() },
     );
-    if (regRes.status >= 400) {
+    if (regRes.status >= 400 && regRes.status !== 409) {
       res.status(regRes.status).json(regRes.data);
       return;
     }
@@ -97,7 +97,35 @@ v1Router.post('/auth/signup', validateBody(signupBodySchema), async (req, res) =
 
 v1Router.post('/auth/login', validateBody(loginBodySchema), async (req, res) => {
   try {
-    const r = await client.post(`${env.authServiceUrl}/auth/login`, req.body);
+    const { tenantId, email, password } = req.body;
+
+    const tRes = await client.get(`${env.tenantServiceUrl}/internal/tenants/lookup/${tenantId}`, {
+      headers: internalHeaders(),
+    });
+
+    if (tRes.status >= 400) {
+      res.status(tRes.status).json({ message: 'Tenant not found or invalid' });
+      return;
+    }
+
+    const tenant = tRes.data;
+
+    const r = await client.post(`${env.authServiceUrl}/auth/login`, {
+      tenantId: tenant.id,
+      email,
+      password,
+    });
+    res.status(r.status).json(r.data);
+  } catch (e) {
+    sendUpstreamError(res, e);
+  }
+});
+
+v1Router.get('/auth/me', async (req, res) => {
+  try {
+    const r = await client.get(`${env.authServiceUrl}/auth/me`, {
+      headers: forwardAuth(req.headers.authorization),
+    });
     res.status(r.status).json(r.data);
   } catch (e) {
     sendUpstreamError(res, e);
@@ -184,6 +212,50 @@ v1Router.get('/notifications', async (req, res) => {
 v1Router.post('/notifications', async (req, res) => {
   try {
     const r = await client.post(`${env.notificationsServiceUrl}/notifications`, req.body, {
+      headers: forwardAuth(req.headers.authorization),
+    });
+    res.status(r.status).json(r.data);
+  } catch (e) {
+    sendUpstreamError(res, e);
+  }
+});
+
+v1Router.get('/hiring/jobs', async (req, res) => {
+  try {
+    const r = await client.get(`${env.hiringServiceUrl}/jobs`, {
+      headers: forwardAuth(req.headers.authorization),
+    });
+    res.status(r.status).json(r.data);
+  } catch (e) {
+    sendUpstreamError(res, e);
+  }
+});
+
+v1Router.post('/hiring/jobs', async (req, res) => {
+  try {
+    const r = await client.post(`${env.hiringServiceUrl}/jobs`, req.body, {
+      headers: forwardAuth(req.headers.authorization),
+    });
+    res.status(r.status).json(r.data);
+  } catch (e) {
+    sendUpstreamError(res, e);
+  }
+});
+
+v1Router.get('/hiring/applications', async (req, res) => {
+  try {
+    const r = await client.get(`${env.hiringServiceUrl}/applications`, {
+      headers: forwardAuth(req.headers.authorization),
+    });
+    res.status(r.status).json(r.data);
+  } catch (e) {
+    sendUpstreamError(res, e);
+  }
+});
+
+v1Router.post('/hiring/applications', async (req, res) => {
+  try {
+    const r = await client.post(`${env.hiringServiceUrl}/applications`, req.body, {
       headers: forwardAuth(req.headers.authorization),
     });
     res.status(r.status).json(r.data);

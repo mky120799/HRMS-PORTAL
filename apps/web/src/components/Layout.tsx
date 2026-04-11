@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Users, 
@@ -6,7 +6,8 @@ import {
   Bell, 
   LogOut,
   Building2,
-  User
+  User,
+  Briefcase
 } from 'lucide-react';
 import { clearAuth, getAuth } from '../lib/auth';
 
@@ -35,6 +36,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Bell size={20} style={{ marginRight: 12 }} />
             Notifications
           </NavLink>
+          {auth?.user.role === 'ADMIN' && (
+            <NavLink to="/hiring">
+              <Briefcase size={20} style={{ marginRight: 12 }} />
+              Hiring
+            </NavLink>
+          )}
         </nav>
 
         <div style={{ marginTop: 'auto', paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
@@ -69,9 +76,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="row gap">
-            <button style={{ background: 'transparent', color: 'var(--text-muted)', border: '1px solid rgba(0,0,0,0.1)' }}>
-              <User size={18} />
-            </button>
+            <Link to="/profile" style={{ textDecoration: 'none' }}>
+              <button style={{ background: 'transparent', color: 'var(--text-muted)', border: '1px solid rgba(0,0,0,0.1)' }}>
+                <User size={18} />
+              </button>
+            </Link>
           </div>
         </header>
         <section>{children}</section>

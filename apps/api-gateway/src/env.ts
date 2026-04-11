@@ -15,5 +15,6 @@ export const env = {
   employeeServiceUrl: required('EMPLOYEE_SERVICE_URL'),
   leaveServiceUrl: required('LEAVE_SERVICE_URL'),
   notificationsServiceUrl: required('NOTIFICATIONS_SERVICE_URL'),
+  hiringServiceUrl: required('HIRING_SERVICE_URL'),
   internalServiceSecret: required('INTERNAL_SERVICE_SECRET'),
 };

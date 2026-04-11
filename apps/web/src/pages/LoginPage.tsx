@@ -9,7 +9,7 @@ import { setAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 
 const schema = z.object({
-  tenantId: z.string().uuid('Tenant ID must be a valid UUID'),
+  tenantId: z.string().min(1, 'Tenant ID or Slug is required'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
@@ -52,8 +52,8 @@ export function LoginPage() {
 
         <form onSubmit={handleSubmit(onSubmit)}>
           <div style={{ marginBottom: 20 }}>
-            <label><Building2 size={14} style={{ marginRight: 6 }} /> Tenant ID</label>
-            <input placeholder="e.g. 123e4567-e89b..." {...register('tenantId')} />
+            <label><Building2 size={14} style={{ marginRight: 6 }} /> Tenant ID / Slug</label>
+            <input placeholder="e.g. acme-corp or UUID" {...register('tenantId')} />
             {errors.tenantId && <p>{errors.tenantId.message}</p>}
           </div>
 
