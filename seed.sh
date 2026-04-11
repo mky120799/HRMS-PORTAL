@@ -77,6 +77,58 @@ curl -s -X POST "$GATEWAY_URL/notifications" \
     "status": "SENT"
   }' > /dev/null
 
+# 5. Create Job Postings
+echo "💼 Creating Job Postings..."
+JOB1_RES=$(curl -s -X POST "$GATEWAY_URL/hiring/jobs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Senior Software Engineer",
+    "department": "Engineering",
+    "description": "We are looking for a seasoned engineer to lead our platform team. You will architect and build scalable systems."
+  }')
+JOB1_ID=$(echo $JOB1_RES | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4)
+
+JOB2_RES=$(curl -s -X POST "$GATEWAY_URL/hiring/jobs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Product Manager",
+    "department": "Product",
+    "description": "Drive the product vision and roadmap. You will collaborate with engineering, design, and stakeholders."
+  }')
+JOB2_ID=$(echo $JOB2_RES | grep -o '"id":"[^"]*' | head -1 | cut -d'"' -f4)
+
+# 6. Create Applications
+echo "📨 Creating Sample Applications..."
+if [ ! -z "$JOB1_ID" ]; then
+  curl -s -X POST "$GATEWAY_URL/hiring/applications" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"jobId\": \"$JOB1_ID\",
+      \"candidateName\": \"Alex Johnson\",
+      \"candidateEmail\": \"alex.j@example.com\"
+    }" > /dev/null
+
+  curl -s -X POST "$GATEWAY_URL/hiring/applications" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"jobId\": \"$JOB1_ID\",
+      \"candidateName\": \"Priya Sharma\",
+      \"candidateEmail\": \"priya.s@example.com\"
+    }" > /dev/null
+fi
+
+if [ ! -z "$JOB2_ID" ]; then
+  curl -s -X POST "$GATEWAY_URL/hiring/applications" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"jobId\": \"$JOB2_ID\",
+      \"candidateName\": \"Marcus Lee\",
+      \"candidateEmail\": \"marcus.l@example.com\"
+    }" > /dev/null
+fi
+
 echo -e "\n\n"
 echo "================================================================"
 echo "🎉 PROJECT SEEDED SUCCESSFULLY!"
