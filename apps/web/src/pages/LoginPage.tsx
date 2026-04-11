@@ -9,7 +9,7 @@ import { setAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 
 const schema = z.object({
-  tenantId: z.string().min(1, 'Tenant ID is required'),
+  tenantId: z.string().uuid('Tenant ID must be a valid UUID'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
@@ -30,7 +30,12 @@ export function LoginPage() {
       showToast('Welcome back');
       nav('/');
     } catch (error: unknown) {
-      showToast(getErrorMessage(error), 'error');
+      const msg = getErrorMessage(error);
+      if (msg === 'Invalid credentials') {
+        showToast('Login failed. Please double-check your Tenant ID and Admin Email.', 'error');
+      } else {
+        showToast(msg, 'error');
+      }
     }
   };
 

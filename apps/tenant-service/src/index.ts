@@ -43,6 +43,16 @@ const server = app.listen(env.port, () => {
   console.log(`tenant-service (Express) listening on http://localhost:${env.port}`);
 });
 
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection at:', reason);
+  process.exit(1);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
 process.on('SIGINT', () => {
   server.close(() => process.exit(0));
 });

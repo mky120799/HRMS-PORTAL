@@ -20,8 +20,7 @@
     "prisma:employee": "npm run prisma -w @hrms/employee-service",
     "dev:web": "npm run dev -w @hrms/web",
     "build:web": "npm run build -w @hrms/web",
-    "dev": "npx concurrently \"npm:dev:*\"",
-    "dev:all": "npx concurrently \"npm:dev:*\""
+    "start:all": "npx concurrently \"npm:dev:*\""
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

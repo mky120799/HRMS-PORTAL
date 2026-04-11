@@ -31,7 +31,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# 4. Run all services
+# 5. Run all services
 echo "✨ Starting HRMS Portal (Microservices + Frontend)..."
 echo "💡 Tip: All services run concurrently. Check the prefixed logs."
-npm run dev
+npm run start:all

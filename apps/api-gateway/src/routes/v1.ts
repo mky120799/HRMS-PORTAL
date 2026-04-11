@@ -22,6 +22,34 @@ v1Router.get('/health', (_req, res) => {
   res.json({ service: 'api-gateway', status: 'ok', runtime: 'express' });
 });
 
+v1Router.get('/health/all', async (_req, res) => {
+  const services = [
+    { name: 'auth', url: `${env.authServiceUrl}/health` },
+    { name: 'tenant', url: `${env.tenantServiceUrl}/health` },
+    { name: 'employee', url: `${env.employeeServiceUrl}/health` },
+    { name: 'leave', url: `${env.leaveServiceUrl}/health` },
+    { name: 'notifications', url: `${env.notificationsServiceUrl}/health` },
+  ];
+
+  const results = await Promise.all(
+    services.map(async (s) => {
+      try {
+        const r = await client.get(s.url, { timeout: 2000 });
+        return { name: s.name, status: 'UP', data: r.data };
+      } catch (e: any) {
+        return { name: s.name, status: 'DOWN', error: e.message };
+      }
+    }),
+  );
+
+  const allUp = results.every((r) => r.status === 'UP');
+  res.status(allUp ? 200 : 207).json({
+    timestamp: new Date().toISOString(),
+    overall: allUp ? 'HEALTHY' : 'DEGRADED',
+    services: results,
+  });
+});
+
 v1Router.post('/auth/signup', validateBody(signupBodySchema), async (req, res) => {
   const { tenantName, email, password, name } = req.body as z.infer<typeof signupBodySchema>;
 
