@@ -16,6 +16,8 @@ model Notification {
   body            String
   status          String   @default("PENDING")
   recipientUserId String?
+  recipientEmail  String?
+  subject         String?
   metadata        Json?
   createdAt       DateTime @default(now())
 

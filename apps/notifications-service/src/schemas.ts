@@ -8,6 +8,8 @@ export const internalCreateSchema = z.object({
   title: z.string().min(1).max(200),
   body: z.string().min(1).max(8000),
   recipientUserId: z.string().uuid().optional(),
+  recipientEmail: z.string().email().optional(),
+  subject: z.string().max(200).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   status: z.enum(['PENDING', 'SENT', 'FAILED']).optional(),
 });
@@ -17,5 +19,13 @@ export const userCreateSchema = z.object({
   title: z.string().min(1).max(200),
   body: z.string().min(1).max(8000),
   recipientUserId: z.string().uuid().optional(),
+  recipientEmail: z.string().email().optional(),
+  subject: z.string().max(200).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const composeEmailSchema = z.object({
+  to: z.string().email('Recipient email is required'),
+  subject: z.string().min(1, 'Subject is required').max(200),
+  body: z.string().min(1, 'Body is required').max(50000),
 });

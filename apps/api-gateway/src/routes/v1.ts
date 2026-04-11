@@ -220,6 +220,17 @@ v1Router.post('/notifications', async (req, res) => {
   }
 });
 
+v1Router.post('/notifications/compose-email', async (req, res) => {
+  try {
+    const r = await client.post(`${env.notificationsServiceUrl}/notifications/compose-email`, req.body, {
+      headers: forwardAuth(req.headers.authorization),
+    });
+    res.status(r.status).json(r.data);
+  } catch (e) {
+    sendUpstreamError(res, e);
+  }
+});
+
 v1Router.get('/hiring/jobs', async (req, res) => {
   try {
     const r = await client.get(`${env.hiringServiceUrl}/jobs`, {
@@ -244,7 +255,8 @@ v1Router.post('/hiring/jobs', async (req, res) => {
 
 v1Router.get('/hiring/applications', async (req, res) => {
   try {
-    const r = await client.get(`${env.hiringServiceUrl}/applications`, {
+    const qs = req.query.jobId ? `?jobId=${req.query.jobId}` : '';
+    const r = await client.get(`${env.hiringServiceUrl}/applications${qs}`, {
       headers: forwardAuth(req.headers.authorization),
     });
     res.status(r.status).json(r.data);
@@ -253,9 +265,20 @@ v1Router.get('/hiring/applications', async (req, res) => {
   }
 });
 
-v1Router.post('/hiring/applications', async (req, res) => {
+v1Router.patch('/hiring/applications/:id', async (req, res) => {
   try {
-    const r = await client.post(`${env.hiringServiceUrl}/applications`, req.body, {
+    const r = await client.patch(`${env.hiringServiceUrl}/applications/${req.params.id}`, req.body, {
+      headers: forwardAuth(req.headers.authorization),
+    });
+    res.status(r.status).json(r.data);
+  } catch (e) {
+    sendUpstreamError(res, e);
+  }
+});
+
+v1Router.patch('/hiring/jobs/:id', async (req, res) => {
+  try {
+    const r = await client.patch(`${env.hiringServiceUrl}/jobs/${req.params.id}`, req.body, {
       headers: forwardAuth(req.headers.authorization),
     });
     res.status(r.status).json(r.data);

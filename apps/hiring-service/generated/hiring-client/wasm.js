@@ -109,6 +109,8 @@ exports.Prisma.ApplicationScalarFieldEnum = {
   jobId: 'jobId',
   candidateName: 'candidateName',
   candidateEmail: 'candidateEmail',
+  resumeUrl: 'resumeUrl',
+  resumeFilename: 'resumeFilename',
   status: 'status',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -122,6 +124,11 @@ exports.Prisma.SortOrder = {
 exports.Prisma.QueryMode = {
   default: 'default',
   insensitive: 'insensitive'
+};
+
+exports.Prisma.NullsOrder = {
+  first: 'first',
+  last: 'last'
 };
 
 
@@ -176,13 +183,13 @@ const config = {
       }
     }
   },
-  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../generated/hiring-client\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Job {\n  id           String        @id @default(uuid())\n  tenantId     String\n  title        String\n  description  String\n  department   String\n  status       String        @default(\"OPEN\") // OPEN, CLOSED\n  createdAt    DateTime      @default(now())\n  updatedAt    DateTime      @updatedAt\n  applications Application[]\n\n  @@index([tenantId])\n}\n\nmodel Application {\n  id             String   @id @default(uuid())\n  jobId          String\n  candidateName  String\n  candidateEmail String\n  status         String   @default(\"PENDING\") // PENDING, INTERVIEW, HIRED, REJECTED\n  createdAt      DateTime @default(now())\n  updatedAt      DateTime @updatedAt\n  job            Job      @relation(fields: [jobId], references: [id])\n\n  @@index([jobId])\n}\n",
-  "inlineSchemaHash": "3654a1c195b351aa90b35594708d2bf6bba3e00c58c5eadfbc4c8252d53ab1d1",
+  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../generated/hiring-client\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Job {\n  id           String        @id @default(uuid())\n  tenantId     String\n  title        String\n  description  String\n  department   String\n  status       String        @default(\"OPEN\") // OPEN, CLOSED\n  createdAt    DateTime      @default(now())\n  updatedAt    DateTime      @updatedAt\n  applications Application[]\n\n  @@index([tenantId])\n}\n\nmodel Application {\n  id             String   @id @default(uuid())\n  jobId          String\n  candidateName  String\n  candidateEmail String\n  resumeUrl      String?\n  resumeFilename String?\n  status         String   @default(\"PENDING\") // PENDING, INTERVIEW, HIRED, REJECTED\n  createdAt      DateTime @default(now())\n  updatedAt      DateTime @updatedAt\n  job            Job      @relation(fields: [jobId], references: [id])\n\n  @@index([jobId])\n}\n",
+  "inlineSchemaHash": "7c77c50b5e3428bd2498b8a493b5d3da7e4556dc7520ac37ded083b662ceefb9",
   "copyEngine": true
 }
 config.dirname = '/'
 
-config.runtimeDataModel = JSON.parse("{\"models\":{\"Job\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"tenantId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"title\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"description\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"department\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"status\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"applications\",\"kind\":\"object\",\"type\":\"Application\",\"relationName\":\"ApplicationToJob\"}],\"dbName\":null},\"Application\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"jobId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"candidateName\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"candidateEmail\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"status\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"job\",\"kind\":\"object\",\"type\":\"Job\",\"relationName\":\"ApplicationToJob\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
+config.runtimeDataModel = JSON.parse("{\"models\":{\"Job\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"tenantId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"title\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"description\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"department\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"status\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"applications\",\"kind\":\"object\",\"type\":\"Application\",\"relationName\":\"ApplicationToJob\"}],\"dbName\":null},\"Application\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"jobId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"candidateName\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"candidateEmail\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"resumeUrl\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"resumeFilename\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"status\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"job\",\"kind\":\"object\",\"type\":\"Job\",\"relationName\":\"ApplicationToJob\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
 defineDmmfProperty(exports.Prisma, config.runtimeDataModel)
 config.engineWasm = {
   getRuntime: async () => require('./query_engine_bg.js'),

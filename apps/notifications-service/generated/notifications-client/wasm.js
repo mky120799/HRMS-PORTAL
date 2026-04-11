@@ -101,6 +101,8 @@ exports.Prisma.NotificationScalarFieldEnum = {
   body: 'body',
   status: 'status',
   recipientUserId: 'recipientUserId',
+  recipientEmail: 'recipientEmail',
+  subject: 'subject',
   metadata: 'metadata',
   createdAt: 'createdAt'
 };
@@ -174,7 +176,6 @@ const config = {
     "db"
   ],
   "activeProvider": "postgresql",
-  "postinstall": false,
   "inlineDatasources": {
     "db": {
       "url": {
@@ -183,13 +184,13 @@ const config = {
       }
     }
   },
-  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../generated/notifications-client\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Notification {\n  id              String   @id @default(uuid())\n  tenantId        String\n  channel         String\n  title           String\n  body            String\n  status          String   @default(\"PENDING\")\n  recipientUserId String?\n  metadata        Json?\n  createdAt       DateTime @default(now())\n\n  @@index([tenantId, createdAt])\n}\n",
-  "inlineSchemaHash": "6491b46913ef3e59b4141aa1296281582c21e89c0ddf5e18c91ac2c96a7b5f9c",
+  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../generated/notifications-client\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Notification {\n  id              String   @id @default(uuid())\n  tenantId        String\n  channel         String\n  title           String\n  body            String\n  status          String   @default(\"PENDING\")\n  recipientUserId String?\n  recipientEmail  String?\n  subject         String?\n  metadata        Json?\n  createdAt       DateTime @default(now())\n\n  @@index([tenantId, createdAt])\n}\n",
+  "inlineSchemaHash": "f80d0a485704f837d240bd84774a87fa5fc385753aeb8a8e9f74e5ea1a221a8b",
   "copyEngine": true
 }
 config.dirname = '/'
 
-config.runtimeDataModel = JSON.parse("{\"models\":{\"Notification\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"tenantId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"channel\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"title\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"body\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"status\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"recipientUserId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"metadata\",\"kind\":\"scalar\",\"type\":\"Json\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
+config.runtimeDataModel = JSON.parse("{\"models\":{\"Notification\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"tenantId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"channel\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"title\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"body\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"status\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"recipientUserId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"recipientEmail\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"subject\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"metadata\",\"kind\":\"scalar\",\"type\":\"Json\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
 defineDmmfProperty(exports.Prisma, config.runtimeDataModel)
 config.engineWasm = {
   getRuntime: async () => require('./query_engine_bg.js'),

@@ -2106,6 +2106,8 @@ export namespace Prisma {
     jobId: string | null
     candidateName: string | null
     candidateEmail: string | null
+    resumeUrl: string | null
+    resumeFilename: string | null
     status: string | null
     createdAt: Date | null
     updatedAt: Date | null
@@ -2116,6 +2118,8 @@ export namespace Prisma {
     jobId: string | null
     candidateName: string | null
     candidateEmail: string | null
+    resumeUrl: string | null
+    resumeFilename: string | null
     status: string | null
     createdAt: Date | null
     updatedAt: Date | null
@@ -2126,6 +2130,8 @@ export namespace Prisma {
     jobId: number
     candidateName: number
     candidateEmail: number
+    resumeUrl: number
+    resumeFilename: number
     status: number
     createdAt: number
     updatedAt: number
@@ -2138,6 +2144,8 @@ export namespace Prisma {
     jobId?: true
     candidateName?: true
     candidateEmail?: true
+    resumeUrl?: true
+    resumeFilename?: true
     status?: true
     createdAt?: true
     updatedAt?: true
@@ -2148,6 +2156,8 @@ export namespace Prisma {
     jobId?: true
     candidateName?: true
     candidateEmail?: true
+    resumeUrl?: true
+    resumeFilename?: true
     status?: true
     createdAt?: true
     updatedAt?: true
@@ -2158,6 +2168,8 @@ export namespace Prisma {
     jobId?: true
     candidateName?: true
     candidateEmail?: true
+    resumeUrl?: true
+    resumeFilename?: true
     status?: true
     createdAt?: true
     updatedAt?: true
@@ -2241,6 +2253,8 @@ export namespace Prisma {
     jobId: string
     candidateName: string
     candidateEmail: string
+    resumeUrl: string | null
+    resumeFilename: string | null
     status: string
     createdAt: Date
     updatedAt: Date
@@ -2268,6 +2282,8 @@ export namespace Prisma {
     jobId?: boolean
     candidateName?: boolean
     candidateEmail?: boolean
+    resumeUrl?: boolean
+    resumeFilename?: boolean
     status?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -2279,6 +2295,8 @@ export namespace Prisma {
     jobId?: boolean
     candidateName?: boolean
     candidateEmail?: boolean
+    resumeUrl?: boolean
+    resumeFilename?: boolean
     status?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -2290,6 +2308,8 @@ export namespace Prisma {
     jobId?: boolean
     candidateName?: boolean
     candidateEmail?: boolean
+    resumeUrl?: boolean
+    resumeFilename?: boolean
     status?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -2301,12 +2321,14 @@ export namespace Prisma {
     jobId?: boolean
     candidateName?: boolean
     candidateEmail?: boolean
+    resumeUrl?: boolean
+    resumeFilename?: boolean
     status?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }
 
-  export type ApplicationOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "jobId" | "candidateName" | "candidateEmail" | "status" | "createdAt" | "updatedAt", ExtArgs["result"]["application"]>
+  export type ApplicationOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "jobId" | "candidateName" | "candidateEmail" | "resumeUrl" | "resumeFilename" | "status" | "createdAt" | "updatedAt", ExtArgs["result"]["application"]>
   export type ApplicationInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     job?: boolean | JobDefaultArgs<ExtArgs>
   }
@@ -2327,6 +2349,8 @@ export namespace Prisma {
       jobId: string
       candidateName: string
       candidateEmail: string
+      resumeUrl: string | null
+      resumeFilename: string | null
       status: string
       createdAt: Date
       updatedAt: Date
@@ -2758,6 +2782,8 @@ export namespace Prisma {
     readonly jobId: FieldRef<"Application", 'String'>
     readonly candidateName: FieldRef<"Application", 'String'>
     readonly candidateEmail: FieldRef<"Application", 'String'>
+    readonly resumeUrl: FieldRef<"Application", 'String'>
+    readonly resumeFilename: FieldRef<"Application", 'String'>
     readonly status: FieldRef<"Application", 'String'>
     readonly createdAt: FieldRef<"Application", 'DateTime'>
     readonly updatedAt: FieldRef<"Application", 'DateTime'>
@@ -3208,6 +3234,8 @@ export namespace Prisma {
     jobId: 'jobId',
     candidateName: 'candidateName',
     candidateEmail: 'candidateEmail',
+    resumeUrl: 'resumeUrl',
+    resumeFilename: 'resumeFilename',
     status: 'status',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
@@ -3230,6 +3258,14 @@ export namespace Prisma {
   };
 
   export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
+  export const NullsOrder: {
+    first: 'first',
+    last: 'last'
+  };
+
+  export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
 
 
   /**
@@ -3360,6 +3396,8 @@ export namespace Prisma {
     jobId?: StringFilter<"Application"> | string
     candidateName?: StringFilter<"Application"> | string
     candidateEmail?: StringFilter<"Application"> | string
+    resumeUrl?: StringNullableFilter<"Application"> | string | null
+    resumeFilename?: StringNullableFilter<"Application"> | string | null
     status?: StringFilter<"Application"> | string
     createdAt?: DateTimeFilter<"Application"> | Date | string
     updatedAt?: DateTimeFilter<"Application"> | Date | string
@@ -3371,6 +3409,8 @@ export namespace Prisma {
     jobId?: SortOrder
     candidateName?: SortOrder
     candidateEmail?: SortOrder
+    resumeUrl?: SortOrderInput | SortOrder
+    resumeFilename?: SortOrderInput | SortOrder
     status?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -3385,6 +3425,8 @@ export namespace Prisma {
     jobId?: StringFilter<"Application"> | string
     candidateName?: StringFilter<"Application"> | string
     candidateEmail?: StringFilter<"Application"> | string
+    resumeUrl?: StringNullableFilter<"Application"> | string | null
+    resumeFilename?: StringNullableFilter<"Application"> | string | null
     status?: StringFilter<"Application"> | string
     createdAt?: DateTimeFilter<"Application"> | Date | string
     updatedAt?: DateTimeFilter<"Application"> | Date | string
@@ -3396,6 +3438,8 @@ export namespace Prisma {
     jobId?: SortOrder
     candidateName?: SortOrder
     candidateEmail?: SortOrder
+    resumeUrl?: SortOrderInput | SortOrder
+    resumeFilename?: SortOrderInput | SortOrder
     status?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -3412,6 +3456,8 @@ export namespace Prisma {
     jobId?: StringWithAggregatesFilter<"Application"> | string
     candidateName?: StringWithAggregatesFilter<"Application"> | string
     candidateEmail?: StringWithAggregatesFilter<"Application"> | string
+    resumeUrl?: StringNullableWithAggregatesFilter<"Application"> | string | null
+    resumeFilename?: StringNullableWithAggregatesFilter<"Application"> | string | null
     status?: StringWithAggregatesFilter<"Application"> | string
     createdAt?: DateTimeWithAggregatesFilter<"Application"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"Application"> | Date | string
@@ -3502,6 +3548,8 @@ export namespace Prisma {
     id?: string
     candidateName: string
     candidateEmail: string
+    resumeUrl?: string | null
+    resumeFilename?: string | null
     status?: string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -3513,6 +3561,8 @@ export namespace Prisma {
     jobId: string
     candidateName: string
     candidateEmail: string
+    resumeUrl?: string | null
+    resumeFilename?: string | null
     status?: string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -3522,6 +3572,8 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     candidateName?: StringFieldUpdateOperationsInput | string
     candidateEmail?: StringFieldUpdateOperationsInput | string
+    resumeUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    resumeFilename?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -3533,6 +3585,8 @@ export namespace Prisma {
     jobId?: StringFieldUpdateOperationsInput | string
     candidateName?: StringFieldUpdateOperationsInput | string
     candidateEmail?: StringFieldUpdateOperationsInput | string
+    resumeUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    resumeFilename?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -3543,6 +3597,8 @@ export namespace Prisma {
     jobId: string
     candidateName: string
     candidateEmail: string
+    resumeUrl?: string | null
+    resumeFilename?: string | null
     status?: string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -3552,6 +3608,8 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     candidateName?: StringFieldUpdateOperationsInput | string
     candidateEmail?: StringFieldUpdateOperationsInput | string
+    resumeUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    resumeFilename?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -3562,6 +3620,8 @@ export namespace Prisma {
     jobId?: StringFieldUpdateOperationsInput | string
     candidateName?: StringFieldUpdateOperationsInput | string
     candidateEmail?: StringFieldUpdateOperationsInput | string
+    resumeUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    resumeFilename?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -3668,9 +3728,29 @@ export namespace Prisma {
     _max?: NestedDateTimeFilter<$PrismaModel>
   }
 
+  export type StringNullableFilter<$PrismaModel = never> = {
+    equals?: string | StringFieldRefInput<$PrismaModel> | null
+    in?: string[] | ListStringFieldRefInput<$PrismaModel> | null
+    notIn?: string[] | ListStringFieldRefInput<$PrismaModel> | null
+    lt?: string | StringFieldRefInput<$PrismaModel>
+    lte?: string | StringFieldRefInput<$PrismaModel>
+    gt?: string | StringFieldRefInput<$PrismaModel>
+    gte?: string | StringFieldRefInput<$PrismaModel>
+    contains?: string | StringFieldRefInput<$PrismaModel>
+    startsWith?: string | StringFieldRefInput<$PrismaModel>
+    endsWith?: string | StringFieldRefInput<$PrismaModel>
+    mode?: QueryMode
+    not?: NestedStringNullableFilter<$PrismaModel> | string | null
+  }
+
   export type JobScalarRelationFilter = {
     is?: JobWhereInput
     isNot?: JobWhereInput
+  }
+
+  export type SortOrderInput = {
+    sort: SortOrder
+    nulls?: NullsOrder
   }
 
   export type ApplicationCountOrderByAggregateInput = {
@@ -3678,6 +3758,8 @@ export namespace Prisma {
     jobId?: SortOrder
     candidateName?: SortOrder
     candidateEmail?: SortOrder
+    resumeUrl?: SortOrder
+    resumeFilename?: SortOrder
     status?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -3688,6 +3770,8 @@ export namespace Prisma {
     jobId?: SortOrder
     candidateName?: SortOrder
     candidateEmail?: SortOrder
+    resumeUrl?: SortOrder
+    resumeFilename?: SortOrder
     status?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -3698,9 +3782,29 @@ export namespace Prisma {
     jobId?: SortOrder
     candidateName?: SortOrder
     candidateEmail?: SortOrder
+    resumeUrl?: SortOrder
+    resumeFilename?: SortOrder
     status?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+  }
+
+  export type StringNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: string | StringFieldRefInput<$PrismaModel> | null
+    in?: string[] | ListStringFieldRefInput<$PrismaModel> | null
+    notIn?: string[] | ListStringFieldRefInput<$PrismaModel> | null
+    lt?: string | StringFieldRefInput<$PrismaModel>
+    lte?: string | StringFieldRefInput<$PrismaModel>
+    gt?: string | StringFieldRefInput<$PrismaModel>
+    gte?: string | StringFieldRefInput<$PrismaModel>
+    contains?: string | StringFieldRefInput<$PrismaModel>
+    startsWith?: string | StringFieldRefInput<$PrismaModel>
+    endsWith?: string | StringFieldRefInput<$PrismaModel>
+    mode?: QueryMode
+    not?: NestedStringNullableWithAggregatesFilter<$PrismaModel> | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedStringNullableFilter<$PrismaModel>
+    _max?: NestedStringNullableFilter<$PrismaModel>
   }
 
   export type ApplicationCreateNestedManyWithoutJobInput = {
@@ -3757,6 +3861,10 @@ export namespace Prisma {
     create?: XOR<JobCreateWithoutApplicationsInput, JobUncheckedCreateWithoutApplicationsInput>
     connectOrCreate?: JobCreateOrConnectWithoutApplicationsInput
     connect?: JobWhereUniqueInput
+  }
+
+  export type NullableStringFieldUpdateOperationsInput = {
+    set?: string | null
   }
 
   export type JobUpdateOneRequiredWithoutApplicationsNestedInput = {
@@ -3834,10 +3942,54 @@ export namespace Prisma {
     _max?: NestedDateTimeFilter<$PrismaModel>
   }
 
+  export type NestedStringNullableFilter<$PrismaModel = never> = {
+    equals?: string | StringFieldRefInput<$PrismaModel> | null
+    in?: string[] | ListStringFieldRefInput<$PrismaModel> | null
+    notIn?: string[] | ListStringFieldRefInput<$PrismaModel> | null
+    lt?: string | StringFieldRefInput<$PrismaModel>
+    lte?: string | StringFieldRefInput<$PrismaModel>
+    gt?: string | StringFieldRefInput<$PrismaModel>
+    gte?: string | StringFieldRefInput<$PrismaModel>
+    contains?: string | StringFieldRefInput<$PrismaModel>
+    startsWith?: string | StringFieldRefInput<$PrismaModel>
+    endsWith?: string | StringFieldRefInput<$PrismaModel>
+    not?: NestedStringNullableFilter<$PrismaModel> | string | null
+  }
+
+  export type NestedStringNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: string | StringFieldRefInput<$PrismaModel> | null
+    in?: string[] | ListStringFieldRefInput<$PrismaModel> | null
+    notIn?: string[] | ListStringFieldRefInput<$PrismaModel> | null
+    lt?: string | StringFieldRefInput<$PrismaModel>
+    lte?: string | StringFieldRefInput<$PrismaModel>
+    gt?: string | StringFieldRefInput<$PrismaModel>
+    gte?: string | StringFieldRefInput<$PrismaModel>
+    contains?: string | StringFieldRefInput<$PrismaModel>
+    startsWith?: string | StringFieldRefInput<$PrismaModel>
+    endsWith?: string | StringFieldRefInput<$PrismaModel>
+    not?: NestedStringNullableWithAggregatesFilter<$PrismaModel> | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedStringNullableFilter<$PrismaModel>
+    _max?: NestedStringNullableFilter<$PrismaModel>
+  }
+
+  export type NestedIntNullableFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | ListIntFieldRefInput<$PrismaModel> | null
+    notIn?: number[] | ListIntFieldRefInput<$PrismaModel> | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableFilter<$PrismaModel> | number | null
+  }
+
   export type ApplicationCreateWithoutJobInput = {
     id?: string
     candidateName: string
     candidateEmail: string
+    resumeUrl?: string | null
+    resumeFilename?: string | null
     status?: string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -3847,6 +3999,8 @@ export namespace Prisma {
     id?: string
     candidateName: string
     candidateEmail: string
+    resumeUrl?: string | null
+    resumeFilename?: string | null
     status?: string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -3886,6 +4040,8 @@ export namespace Prisma {
     jobId?: StringFilter<"Application"> | string
     candidateName?: StringFilter<"Application"> | string
     candidateEmail?: StringFilter<"Application"> | string
+    resumeUrl?: StringNullableFilter<"Application"> | string | null
+    resumeFilename?: StringNullableFilter<"Application"> | string | null
     status?: StringFilter<"Application"> | string
     createdAt?: DateTimeFilter<"Application"> | Date | string
     updatedAt?: DateTimeFilter<"Application"> | Date | string
@@ -3955,6 +4111,8 @@ export namespace Prisma {
     id?: string
     candidateName: string
     candidateEmail: string
+    resumeUrl?: string | null
+    resumeFilename?: string | null
     status?: string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -3964,6 +4122,8 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     candidateName?: StringFieldUpdateOperationsInput | string
     candidateEmail?: StringFieldUpdateOperationsInput | string
+    resumeUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    resumeFilename?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -3973,6 +4133,8 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     candidateName?: StringFieldUpdateOperationsInput | string
     candidateEmail?: StringFieldUpdateOperationsInput | string
+    resumeUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    resumeFilename?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -3982,6 +4144,8 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     candidateName?: StringFieldUpdateOperationsInput | string
     candidateEmail?: StringFieldUpdateOperationsInput | string
+    resumeUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    resumeFilename?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string

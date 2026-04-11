@@ -879,6 +879,8 @@ export namespace Prisma {
     body: string | null
     status: string | null
     recipientUserId: string | null
+    recipientEmail: string | null
+    subject: string | null
     createdAt: Date | null
   }
 
@@ -890,6 +892,8 @@ export namespace Prisma {
     body: string | null
     status: string | null
     recipientUserId: string | null
+    recipientEmail: string | null
+    subject: string | null
     createdAt: Date | null
   }
 
@@ -901,6 +905,8 @@ export namespace Prisma {
     body: number
     status: number
     recipientUserId: number
+    recipientEmail: number
+    subject: number
     metadata: number
     createdAt: number
     _all: number
@@ -915,6 +921,8 @@ export namespace Prisma {
     body?: true
     status?: true
     recipientUserId?: true
+    recipientEmail?: true
+    subject?: true
     createdAt?: true
   }
 
@@ -926,6 +934,8 @@ export namespace Prisma {
     body?: true
     status?: true
     recipientUserId?: true
+    recipientEmail?: true
+    subject?: true
     createdAt?: true
   }
 
@@ -937,6 +947,8 @@ export namespace Prisma {
     body?: true
     status?: true
     recipientUserId?: true
+    recipientEmail?: true
+    subject?: true
     metadata?: true
     createdAt?: true
     _all?: true
@@ -1022,6 +1034,8 @@ export namespace Prisma {
     body: string
     status: string
     recipientUserId: string | null
+    recipientEmail: string | null
+    subject: string | null
     metadata: JsonValue | null
     createdAt: Date
     _count: NotificationCountAggregateOutputType | null
@@ -1051,6 +1065,8 @@ export namespace Prisma {
     body?: boolean
     status?: boolean
     recipientUserId?: boolean
+    recipientEmail?: boolean
+    subject?: boolean
     metadata?: boolean
     createdAt?: boolean
   }, ExtArgs["result"]["notification"]>
@@ -1063,6 +1079,8 @@ export namespace Prisma {
     body?: boolean
     status?: boolean
     recipientUserId?: boolean
+    recipientEmail?: boolean
+    subject?: boolean
     metadata?: boolean
     createdAt?: boolean
   }, ExtArgs["result"]["notification"]>
@@ -1075,6 +1093,8 @@ export namespace Prisma {
     body?: boolean
     status?: boolean
     recipientUserId?: boolean
+    recipientEmail?: boolean
+    subject?: boolean
     metadata?: boolean
     createdAt?: boolean
   }, ExtArgs["result"]["notification"]>
@@ -1087,11 +1107,13 @@ export namespace Prisma {
     body?: boolean
     status?: boolean
     recipientUserId?: boolean
+    recipientEmail?: boolean
+    subject?: boolean
     metadata?: boolean
     createdAt?: boolean
   }
 
-  export type NotificationOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenantId" | "channel" | "title" | "body" | "status" | "recipientUserId" | "metadata" | "createdAt", ExtArgs["result"]["notification"]>
+  export type NotificationOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenantId" | "channel" | "title" | "body" | "status" | "recipientUserId" | "recipientEmail" | "subject" | "metadata" | "createdAt", ExtArgs["result"]["notification"]>
 
   export type $NotificationPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "Notification"
@@ -1104,6 +1126,8 @@ export namespace Prisma {
       body: string
       status: string
       recipientUserId: string | null
+      recipientEmail: string | null
+      subject: string | null
       metadata: Prisma.JsonValue | null
       createdAt: Date
     }, ExtArgs["result"]["notification"]>
@@ -1536,6 +1560,8 @@ export namespace Prisma {
     readonly body: FieldRef<"Notification", 'String'>
     readonly status: FieldRef<"Notification", 'String'>
     readonly recipientUserId: FieldRef<"Notification", 'String'>
+    readonly recipientEmail: FieldRef<"Notification", 'String'>
+    readonly subject: FieldRef<"Notification", 'String'>
     readonly metadata: FieldRef<"Notification", 'Json'>
     readonly createdAt: FieldRef<"Notification", 'DateTime'>
   }
@@ -1926,6 +1952,8 @@ export namespace Prisma {
     body: 'body',
     status: 'status',
     recipientUserId: 'recipientUserId',
+    recipientEmail: 'recipientEmail',
+    subject: 'subject',
     metadata: 'metadata',
     createdAt: 'createdAt'
   };
@@ -2049,6 +2077,8 @@ export namespace Prisma {
     body?: StringFilter<"Notification"> | string
     status?: StringFilter<"Notification"> | string
     recipientUserId?: StringNullableFilter<"Notification"> | string | null
+    recipientEmail?: StringNullableFilter<"Notification"> | string | null
+    subject?: StringNullableFilter<"Notification"> | string | null
     metadata?: JsonNullableFilter<"Notification">
     createdAt?: DateTimeFilter<"Notification"> | Date | string
   }
@@ -2061,6 +2091,8 @@ export namespace Prisma {
     body?: SortOrder
     status?: SortOrder
     recipientUserId?: SortOrderInput | SortOrder
+    recipientEmail?: SortOrderInput | SortOrder
+    subject?: SortOrderInput | SortOrder
     metadata?: SortOrderInput | SortOrder
     createdAt?: SortOrder
   }
@@ -2076,6 +2108,8 @@ export namespace Prisma {
     body?: StringFilter<"Notification"> | string
     status?: StringFilter<"Notification"> | string
     recipientUserId?: StringNullableFilter<"Notification"> | string | null
+    recipientEmail?: StringNullableFilter<"Notification"> | string | null
+    subject?: StringNullableFilter<"Notification"> | string | null
     metadata?: JsonNullableFilter<"Notification">
     createdAt?: DateTimeFilter<"Notification"> | Date | string
   }, "id">
@@ -2088,6 +2122,8 @@ export namespace Prisma {
     body?: SortOrder
     status?: SortOrder
     recipientUserId?: SortOrderInput | SortOrder
+    recipientEmail?: SortOrderInput | SortOrder
+    subject?: SortOrderInput | SortOrder
     metadata?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     _count?: NotificationCountOrderByAggregateInput
@@ -2106,6 +2142,8 @@ export namespace Prisma {
     body?: StringWithAggregatesFilter<"Notification"> | string
     status?: StringWithAggregatesFilter<"Notification"> | string
     recipientUserId?: StringNullableWithAggregatesFilter<"Notification"> | string | null
+    recipientEmail?: StringNullableWithAggregatesFilter<"Notification"> | string | null
+    subject?: StringNullableWithAggregatesFilter<"Notification"> | string | null
     metadata?: JsonNullableWithAggregatesFilter<"Notification">
     createdAt?: DateTimeWithAggregatesFilter<"Notification"> | Date | string
   }
@@ -2118,6 +2156,8 @@ export namespace Prisma {
     body: string
     status?: string
     recipientUserId?: string | null
+    recipientEmail?: string | null
+    subject?: string | null
     metadata?: NullableJsonNullValueInput | InputJsonValue
     createdAt?: Date | string
   }
@@ -2130,6 +2170,8 @@ export namespace Prisma {
     body: string
     status?: string
     recipientUserId?: string | null
+    recipientEmail?: string | null
+    subject?: string | null
     metadata?: NullableJsonNullValueInput | InputJsonValue
     createdAt?: Date | string
   }
@@ -2142,6 +2184,8 @@ export namespace Prisma {
     body?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     recipientUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    subject?: NullableStringFieldUpdateOperationsInput | string | null
     metadata?: NullableJsonNullValueInput | InputJsonValue
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -2154,6 +2198,8 @@ export namespace Prisma {
     body?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     recipientUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    subject?: NullableStringFieldUpdateOperationsInput | string | null
     metadata?: NullableJsonNullValueInput | InputJsonValue
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -2166,6 +2212,8 @@ export namespace Prisma {
     body: string
     status?: string
     recipientUserId?: string | null
+    recipientEmail?: string | null
+    subject?: string | null
     metadata?: NullableJsonNullValueInput | InputJsonValue
     createdAt?: Date | string
   }
@@ -2178,6 +2226,8 @@ export namespace Prisma {
     body?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     recipientUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    subject?: NullableStringFieldUpdateOperationsInput | string | null
     metadata?: NullableJsonNullValueInput | InputJsonValue
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -2190,6 +2240,8 @@ export namespace Prisma {
     body?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     recipientUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    subject?: NullableStringFieldUpdateOperationsInput | string | null
     metadata?: NullableJsonNullValueInput | InputJsonValue
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -2271,6 +2323,8 @@ export namespace Prisma {
     body?: SortOrder
     status?: SortOrder
     recipientUserId?: SortOrder
+    recipientEmail?: SortOrder
+    subject?: SortOrder
     metadata?: SortOrder
     createdAt?: SortOrder
   }
@@ -2283,6 +2337,8 @@ export namespace Prisma {
     body?: SortOrder
     status?: SortOrder
     recipientUserId?: SortOrder
+    recipientEmail?: SortOrder
+    subject?: SortOrder
     createdAt?: SortOrder
   }
 
@@ -2294,6 +2350,8 @@ export namespace Prisma {
     body?: SortOrder
     status?: SortOrder
     recipientUserId?: SortOrder
+    recipientEmail?: SortOrder
+    subject?: SortOrder
     createdAt?: SortOrder
   }
 
