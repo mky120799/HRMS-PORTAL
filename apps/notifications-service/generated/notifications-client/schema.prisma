@@ -1,0 +1,23 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/notifications-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Notification {
+  id              String   @id @default(uuid())
+  tenantId        String
+  channel         String
+  title           String
+  body            String
+  status          String   @default("PENDING")
+  recipientUserId String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
