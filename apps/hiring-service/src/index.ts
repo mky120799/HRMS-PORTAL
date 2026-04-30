@@ -46,6 +46,14 @@ app.get('/health', (_req, res) => {
 });
 
 // ─── JOBS ─────────────────────────────────────────────────────────────────────
+app.get('/public/jobs', async (_req, res) => {
+  const jobs = await prisma.job.findMany({
+    where: { status: 'OPEN' },
+    include: { _count: { select: { applications: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(jobs);
+});
 app.get('/jobs', jwtAuth, async (req: AuthenticatedRequest, res) => {
   const tenantId = req.auth!.tenantId;
   const jobs = await prisma.job.findMany({
@@ -71,7 +79,7 @@ app.patch('/jobs/:id', jwtAuth, async (req: AuthenticatedRequest, res) => {
   if (req.auth!.role !== 'ADMIN') { res.status(403).json({ message: 'Admin only' }); return; }
   const tenantId = req.auth!.tenantId;
   const { status } = req.body;
-  const job = await prisma.job.updateMany({ where: { id: req.params.id, tenantId }, data: { status } });
+  const job = await prisma.job.updateMany({ where: { id: req.params.id as string, tenantId }, data: { status } });
   res.json(job);
 });
 
@@ -129,7 +137,39 @@ app.post('/applications', upload.single('resume'), async (req: any, res: any) =>
 app.patch('/applications/:id', jwtAuth, async (req: AuthenticatedRequest, res) => {
   if (req.auth!.role !== 'ADMIN') { res.status(403).json({ message: 'Admin only' }); return; }
   const { status } = req.body;
-  const app_ = await prisma.application.update({ where: { id: req.params.id as string }, data: { status } });
+  const app_ = await prisma.application.update({ 
+    where: { id: req.params.id as string }, 
+    data: { status },
+    include: { job: true } 
+  });
+
+  // Automated Push Notification Email
+  try {
+    const message = `
+      <h3>Application Update</h3>
+      <p>Hi ${app_.candidateName},</p>
+      <p>Your application status for <strong>${app_.job.title}</strong> has been updated to: <strong style="color: #4f46e5;">${status}</strong>.</p>
+      <p>We will be in touch with next steps soon!</p>
+      <br/>
+      <p>Best,<br/>The HR Team</p>
+    `;
+    
+    await fetch('http://localhost:3005/compose-email', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': req.headers.authorization ?? ''
+      },
+      body: JSON.stringify({
+        to: app_.candidateEmail,
+        subject: `Update on your application for ${app_.job.title}`,
+        body: message
+      })
+    });
+  } catch (e) {
+    console.error('Failed to trigger automated email:', e);
+  }
+
   res.json(app_);
 });
 

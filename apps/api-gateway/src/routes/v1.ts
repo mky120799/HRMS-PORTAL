@@ -231,6 +231,15 @@ v1Router.post('/notifications/compose-email', async (req, res) => {
   }
 });
 
+v1Router.get('/hiring/public/jobs', async (req, res) => {
+  try {
+    const r = await client.get(`${env.hiringServiceUrl}/public/jobs`);
+    res.status(r.status).json(r.data);
+  } catch (e) {
+    sendUpstreamError(res, e);
+  }
+});
+
 v1Router.get('/hiring/jobs', async (req, res) => {
   try {
     const r = await client.get(`${env.hiringServiceUrl}/jobs`, {

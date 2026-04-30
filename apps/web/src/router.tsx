@@ -9,6 +9,7 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { SignupPage } from './pages/SignupPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { HiringPage } from './pages/HiringPage';
+import { CareersPage } from './pages/CareersPage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -29,6 +30,7 @@ export function AppRouter() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/careers" element={<CareersPage />} />
       <Route element={<Protected />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/employees" element={<EmployeesPage />} />
