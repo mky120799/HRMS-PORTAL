@@ -4,6 +4,12 @@ import { BullModule } from '@nestjs/bullmq';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { EmployeesModule } from './modules/employees/employees.module';
+import { LeavesModule } from './modules/leaves/leaves.module';
+import { HiringModule } from './modules/hiring/hiring.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -19,6 +25,12 @@ import { PrismaModule } from './common/prisma/prisma.module';
       }),
     }),
     PrismaModule,
+    AuthModule,
+    EmployeesModule,
+    LeavesModule,
+    HiringModule,
+    TenantsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

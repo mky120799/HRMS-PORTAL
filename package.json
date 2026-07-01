@@ -6,19 +6,11 @@
     "apps/*"
   ],
   "scripts": {
-    "bootstrap": "npm run build -w @hrms/shared && npm run prisma:generate -w @hrms/tenant-service && npm run prisma:generate -w @hrms/auth-service && npm run prisma:generate -w @hrms/employee-service && npm run prisma:generate -w @hrms/notifications-service && npm run prisma:generate -w @hrms/hiring-service",
+    "bootstrap": "npm run build -w @hrms/shared && npm run prisma:generate -w @hrms/server",
     "build": "npm run build --workspaces --if-present",
     "build:shared": "npm run build -w @hrms/shared",
-    "dev:tenant": "npm run start:dev -w @hrms/tenant-service",
-    "dev:auth": "npm run start:dev -w @hrms/auth-service",
-    "dev:employee": "npm run start:dev -w @hrms/employee-service",
-    "dev:leave": "npm run start:dev -w @hrms/leave-service",
-    "dev:gateway": "npm run start:dev -w @hrms/api-gateway",
-    "dev:notifications": "npm run start:dev -w @hrms/notifications-service",
-    "dev:hiring": "npm run dev -w @hrms/hiring-service",
-    "prisma:tenant": "npm run prisma -w @hrms/tenant-service",
-    "prisma:auth": "npm run prisma -w @hrms/auth-service",
-    "prisma:employee": "npm run prisma -w @hrms/employee-service",
+    "dev:server": "npm run start:dev -w @hrms/server",
+    "prisma:server": "npm run prisma -w @hrms/server",
     "dev:web": "npm run dev -w @hrms/web",
     "build:web": "npm run build -w @hrms/web",
     "start:all": "npx concurrently \"npm:dev:*\""
