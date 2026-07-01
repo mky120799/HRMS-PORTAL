@@ -10,6 +10,7 @@ import { LeavesModule } from './modules/leaves/leaves.module';
 import { HiringModule } from './modules/hiring/hiring.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     HiringModule,
     TenantsModule,
     NotificationsModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

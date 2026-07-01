@@ -6,6 +6,9 @@ import { registerSchema } from './dto/register.dto';
 import type { RegisterDto } from './dto/register.dto';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { inviteSchema, resetRequestSchema, setPasswordSchema, InviteDto, ResetRequestDto, SetPasswordDto } from './dto/auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -35,5 +38,31 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async getProfile(@Request() req: any) {
     return this.authService.getUserProfile(req.user.userId);
+  }
+
+  @Post('invite')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @UsePipes(new ZodValidationPipe(inviteSchema))
+  async inviteEmployee(@Request() req: any, @Body() dto: InviteDto) {
+    return this.authService.inviteEmployee(req.user.tenantId, dto.email, dto.name);
+  }
+
+  @Post('reset-password-request')
+  @UsePipes(new ZodValidationPipe(resetRequestSchema))
+  async requestReset(@Body() dto: ResetRequestDto) {
+    return this.authService.resetPasswordRequest(dto.tenantId, dto.email);
+  }
+
+  @Post('accept-invite')
+  @UsePipes(new ZodValidationPipe(setPasswordSchema))
+  async acceptInvite(@Body() dto: SetPasswordDto) {
+    return this.authService.setPasswordWithToken(dto.token, dto.password, 'INVITE');
+  }
+
+  @Post('reset-password')
+  @UsePipes(new ZodValidationPipe(setPasswordSchema))
+  async resetPassword(@Body() dto: SetPasswordDto) {
+    return this.authService.setPasswordWithToken(dto.token, dto.password, 'RESET');
   }
 }

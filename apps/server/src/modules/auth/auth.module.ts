@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from '../../common/strategies/jwt.strategy';
 import { PrismaModule } from '../../common/prisma/prisma.module';
+import { BullModule } from '@nestjs/bullmq';
 
 @Module({
   imports: [
@@ -16,6 +17,9 @@ import { PrismaModule } from '../../common/prisma/prisma.module';
         signOptions: { expiresIn: '7d' },
       }),
       inject: [ConfigService],
+    }),
+    BullModule.registerQueue({
+      name: 'notifications',
     }),
   ],
   controllers: [AuthController],

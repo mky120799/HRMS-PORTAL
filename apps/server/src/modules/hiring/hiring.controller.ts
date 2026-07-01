@@ -60,7 +60,7 @@ export class HiringController {
        throw new BadRequestException('Missing required fields');
     }
 
-    const application = await this.hiringService.createApplication(jobId, candidateName, candidateEmail, data.filename);
+    const application = await this.hiringService.createApplication(jobId, candidateName, candidateEmail, data.filename, data.file);
     res.send(application);
   }
 
