@@ -2,6 +2,7 @@ import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Users, 
+  Calendar,
   CalendarClock, 
   Bell, 
   LogOut,
@@ -9,7 +10,7 @@ import {
   User,
   Briefcase
 } from 'lucide-react';
-import { clearAuth, getAuth } from '../lib/auth';
+import { clearAuth, getAuth, hasRole } from '../lib/auth';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const nav = useNavigate();
@@ -28,7 +29,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Users size={20} style={{ marginRight: 12 }} />
             Employees
           </NavLink>
-          <NavLink to="/leave">
+          {hasRole(['ADMIN', 'EMPLOYEE', 'MANAGER']) && (
+            <NavLink to="/attendance" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
+              <Calendar size={20} style={{ marginRight: 12 }} />
+              Attendance & Payroll
+            </NavLink>
+          )}
+          <NavLink to="/leave" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
             <CalendarClock size={20} style={{ marginRight: 12 }} />
             Leave Management
           </NavLink>

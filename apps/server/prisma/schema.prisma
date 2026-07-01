@@ -25,14 +25,16 @@ model Tenant {
 }
 
 model User {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   tenantId     String
   email        String
   passwordHash String
   name         String
-  role         String   @default("ADMIN") // ADMIN, MANAGER, EMPLOYEE
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  role         String    @default("ADMIN") // ADMIN, MANAGER, EMPLOYEE
+  refreshToken String?   // Hashed refresh token for session management
+  refreshTokenExpiry DateTime? // When the refresh token expires
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   employee Employee?
@@ -187,4 +189,22 @@ model Payslip {
 
   @@unique([employeeId, month, year])
   @@index([tenantId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  userId     String?  // Who performed the action
+  action     String   // CREATE, UPDATE, DELETE, LOGIN, etc.
+  resource   String   // employees, leaves, payroll, etc.
+  resourceId String?  // ID of the affected record
+  oldValues  Json?    // Before state
+  newValues  Json?    // After state
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, resource])
+  @@index([tenantId, userId])
 }

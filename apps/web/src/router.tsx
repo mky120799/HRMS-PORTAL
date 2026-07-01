@@ -10,6 +10,9 @@ import { SignupPage } from './pages/SignupPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { HiringPage } from './pages/HiringPage';
 import { CareersPage } from './pages/CareersPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { AcceptInvitePage } from './pages/AcceptInvitePage';
+import { AttendancePayrollPage } from './pages/AttendancePayrollPage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -31,9 +34,12 @@ export function AppRouter() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/careers" element={<CareersPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/accept-invite" element={<AcceptInvitePage />} />
       <Route element={<Protected />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/employees" element={<EmployeesPage />} />
+        <Route path="/attendance" element={<AttendancePayrollPage />} />
         <Route path="/leave" element={<LeavePage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route element={<RequireRole allowed={['ADMIN']} />}>

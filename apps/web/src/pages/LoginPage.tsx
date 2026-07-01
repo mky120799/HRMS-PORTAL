@@ -64,7 +64,10 @@ export function LoginPage() {
           </div>
 
           <div style={{ marginBottom: 24 }}>
-            <label><Lock size={14} style={{ marginRight: 6 }} /> Password</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={{ margin: 0 }}><Lock size={14} style={{ marginRight: 6 }} /> Password</label>
+              <Link to="/reset-password" style={{ fontSize: 13, color: '#818cf8', textDecoration: 'none' }}>Forgot password?</Link>
+            </div>
             <input type="password" placeholder="••••••••" {...register('password')} />
             {errors.password && <p>{errors.password.message}</p>}
           </div>

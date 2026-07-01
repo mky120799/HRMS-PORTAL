@@ -1,5 +1,6 @@
 export interface AuthState {
   accessToken: string;
+  refreshToken: string;
   tokenType: string;
   expiresIn: string;
   user: {

@@ -19,7 +19,10 @@ import {
   AreaChart,
   Area
 } from 'recharts';
+import { getAuth } from '../lib/auth';
 import { api } from '../lib/api';
+import { useToast } from '../lib/toast';
+import { getErrorMessage } from '../lib/errors';
 
 const data = [
   { name: 'Mon', count: 4 },
@@ -30,8 +33,33 @@ const data = [
 ];
 
 export function DashboardPage() {
+  const { showToast } = useToast();
+  const auth = getAuth();
   const employees = useQuery({ queryKey: ['employees'], queryFn: async () => (await api.get('/employees')).data });
   const leaves = useQuery({ queryKey: ['leave'], queryFn: async () => (await api.get('/leave-requests')).data });
+  const attendance = useQuery({ queryKey: ['attendance'], queryFn: async () => (await api.get('/attendance/me')).data });
+  
+  const todayRecord = attendance.data?.find((r: any) => new Date(r.date).toDateString() === new Date().toDateString());
+
+  const handleClockIn = async () => {
+    try {
+      await api.post('/attendance/clock-in');
+      showToast('Clocked in successfully', 'success');
+      attendance.refetch();
+    } catch (e) {
+      showToast(getErrorMessage(e), 'error');
+    }
+  };
+
+  const handleClockOut = async () => {
+    try {
+      await api.post('/attendance/clock-out');
+      showToast('Clocked out successfully', 'success');
+      attendance.refetch();
+    } catch (e) {
+      showToast(getErrorMessage(e), 'error');
+    }
+  };
 
   return (
     <div className="dashboard">
@@ -113,9 +141,25 @@ export function DashboardPage() {
             <button className="row gap" style={{ background: 'rgba(16, 185, 129, 0.05)', color: 'var(--text-main)', textAlign: 'left', justifyContent: 'flex-start' }}>
               <CheckCircle size={18} color="#10b981" /> Approve Leaves
             </button>
-            <button className="row gap" style={{ background: 'rgba(239, 68, 68, 0.05)', color: 'var(--text-main)', textAlign: 'left', justifyContent: 'flex-start' }}>
-              <Bell size={18} color="#ef4444" /> Send Notification
-            </button>
+            
+            <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <h3 style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 12 }}>My Attendance Today</h3>
+              {todayRecord?.clockIn ? (
+                todayRecord.clockOut ? (
+                  <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: 12, borderRadius: 8, textAlign: 'center', fontSize: 14, fontWeight: 500 }}>
+                    Shift Completed! 🎉
+                  </div>
+                ) : (
+                  <button onClick={handleClockOut} style={{ width: '100%', background: '#ef4444', color: '#fff', padding: 12 }}>
+                    Clock Out
+                  </button>
+                )
+              ) : (
+                <button onClick={handleClockIn} style={{ width: '100%', background: '#10b981', color: '#fff', padding: 12 }}>
+                  Clock In
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

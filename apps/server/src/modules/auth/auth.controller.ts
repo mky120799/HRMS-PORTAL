@@ -8,13 +8,16 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { inviteSchema, resetRequestSchema, setPasswordSchema, InviteDto, ResetRequestDto, SetPasswordDto } from './dto/auth.dto';
+import { inviteSchema, resetRequestSchema, setPasswordSchema } from './dto/auth.dto';
+import type { InviteDto, ResetRequestDto, SetPasswordDto } from './dto/auth.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 attempts per minute
   @UsePipes(new ZodValidationPipe(loginSchema))
   async login(@Body() loginDto: LoginDto) {
     const user = await this.authService.validateUser(loginDto.tenantId, loginDto.email, loginDto.password);
@@ -25,6 +28,7 @@ export class AuthController {
   }
 
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 registrations per minute
   @UsePipes(new ZodValidationPipe(registerSchema))
   async register(@Body() registerDto: RegisterDto) {
     const user = await this.authService.registerUser(registerDto);
@@ -64,5 +68,17 @@ export class AuthController {
   @UsePipes(new ZodValidationPipe(setPasswordSchema))
   async resetPassword(@Body() dto: SetPasswordDto) {
     return this.authService.setPasswordWithToken(dto.token, dto.password, 'RESET');
+  }
+
+  @Post('refresh')
+  async refresh(@Body('refreshToken') refreshToken: string) {
+    if (!refreshToken) throw new UnauthorizedException('Refresh token required');
+    return this.authService.refreshTokens(refreshToken);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  async logout(@Request() req: any) {
+    return this.authService.logout(req.user.sub);
   }
 }

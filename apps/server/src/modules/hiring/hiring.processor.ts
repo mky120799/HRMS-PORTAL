@@ -3,7 +3,6 @@ import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { GoogleGenAI } from '@google/genai';
-import { S3Client } from '@aws-sdk/client-s3';
 
 @Processor('hiring')
 export class HiringProcessor extends WorkerHost {
@@ -13,7 +12,7 @@ export class HiringProcessor extends WorkerHost {
   constructor(private prisma: PrismaService) {
     super();
     if (process.env.GEMINI_API_KEY) {
-      this.ai = new GoogleGenAI();
+      this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     }
   }
 

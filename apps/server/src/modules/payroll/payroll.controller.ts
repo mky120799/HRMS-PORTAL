@@ -5,7 +5,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { updateSalarySchema, UpdateSalaryDto, generatePayslipSchema, GeneratePayslipDto } from './dto/payroll.dto';
+import { updateSalarySchema, generatePayslipSchema } from './dto/payroll.dto';
+import type { UpdateSalaryDto, GeneratePayslipDto } from './dto/payroll.dto';
 
 @ApiTags('Payroll')
 @ApiBearerAuth()

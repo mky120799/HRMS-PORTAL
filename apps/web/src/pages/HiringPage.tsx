@@ -32,6 +32,7 @@ type Application = {
   candidateName: string;
   candidateEmail: string;
   status: string;
+  aiScore: number | null;
   resumeUrl: string | null;
   resumeFilename: string | null;
   createdAt: string;
@@ -248,6 +249,7 @@ export function HiringPage() {
                   <th>Candidate</th>
                   <th>Position</th>
                   <th>Status</th>
+                  <th>AI Match</th>
                   <th>Resume</th>
                   {isAdmin && <th>Actions</th>}
                 </tr>
@@ -264,6 +266,15 @@ export function HiringPage() {
                       <span style={{ background: STATUS_COLORS[a.status] ?? 'rgba(0,0,0,0.05)', color: STATUS_TEXT[a.status] ?? 'var(--text-muted)', padding: '3px 10px', borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
                         {a.status}
                       </span>
+                    </td>
+                    <td>
+                      {a.aiScore != null ? (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: a.aiScore >= 80 ? 'rgba(16,185,129,0.1)' : a.aiScore >= 50 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)', color: a.aiScore >= 80 ? '#10b981' : a.aiScore >= 50 ? '#f59e0b' : '#ef4444' }}>
+                           {a.aiScore >= 80 ? '⭐ ' : ''}{a.aiScore}%
+                        </div>
+                      ) : (
+                        <span className="muted" style={{ fontSize: 12 }}>Pending...</span>
+                      )}
                     </td>
                     <td>
                       {a.resumeUrl ? (
@@ -291,9 +302,9 @@ export function HiringPage() {
                     )}
                   </tr>
                 ))}
-                {applications.isLoading && <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 32 }}>Loading...</td></tr>}
+                {applications.isLoading && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 32 }}>Loading...</td></tr>}
                 {!applications.isLoading && (applications.data?.length ?? 0) === 0 && (
-                  <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 32 }}>No applications yet.</td></tr>
+                  <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 32 }}>No applications yet.</td></tr>
                 )}
               </tbody>
             </table>
