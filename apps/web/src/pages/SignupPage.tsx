@@ -8,6 +8,11 @@ import { getErrorMessage } from '../lib/errors';
 import { setAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Button } from '../components/ui/button';
+
 const schema = z.object({
   tenantName: z.string().min(2, 'Company name is too short'),
   name: z.string().min(1, 'Full name is required'),
@@ -36,51 +41,85 @@ export function SignupPage() {
   };
 
   return (
-    <div className="auth-wrap">
-      <div className="card">
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ display: 'inline-flex', padding: 12, background: 'rgba(192, 132, 252, 0.2)', borderRadius: 12, marginBottom: 16 }}>
-            <UserPlus size={32} color="#c084fc" />
+    <div className="min-h-screen grid place-items-center bg-gradient-to-br from-slate-900 to-indigo-950 p-4">
+      <Card className="w-full max-w-[440px] bg-white/5 border-white/10 text-white backdrop-blur-xl">
+        <CardHeader className="text-center pb-6">
+          <div className="mx-auto mb-4 inline-flex p-3 bg-purple-500/20 rounded-xl">
+            <UserPlus size={32} className="text-purple-400" />
           </div>
-          <h2 style={{ marginBottom: 8 }}>Create Your Portal</h2>
-          <p style={{ color: '#94a3b8', fontSize: 14 }}>Set up your company space in seconds</p>
-        </div>
+          <CardTitle className="text-2xl font-bold">Create Your Portal</CardTitle>
+          <CardDescription className="text-slate-400">Set up your company space in seconds</CardDescription>
+        </CardHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div style={{ marginBottom: 20 }}>
-            <label><Building2 size={14} style={{ marginRight: 6 }} /> Company Name</label>
-            <input placeholder="Acme Inc." {...register('tenantName')} />
-            {errors.tenantName && <p>{errors.tenantName.message}</p>}
-          </div>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+            <div className="space-y-2">
+              <Label className="text-slate-300 flex items-center gap-2">
+                <Building2 size={14} /> Company Name
+              </Label>
+              <Input 
+                placeholder="Acme Inc." 
+                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-purple-500"
+                {...register('tenantName')} 
+              />
+              {errors.tenantName && <p className="text-red-400 text-xs">{errors.tenantName.message}</p>}
+            </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <label><User size={14} style={{ marginRight: 6 }} /> Your Full Name</label>
-            <input placeholder="John Doe" {...register('name')} />
-            {errors.name && <p>{errors.name.message}</p>}
-          </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300 flex items-center gap-2">
+                <User size={14} /> Your Full Name
+              </Label>
+              <Input 
+                placeholder="John Doe" 
+                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-purple-500"
+                {...register('name')} 
+              />
+              {errors.name && <p className="text-red-400 text-xs">{errors.name.message}</p>}
+            </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <label><Mail size={14} style={{ marginRight: 6 }} /> Email Address</label>
-            <input type="email" placeholder="name@company.com" {...register('email')} />
-            {errors.email && <p>{errors.email.message}</p>}
-          </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300 flex items-center gap-2">
+                <Mail size={14} /> Email Address
+              </Label>
+              <Input 
+                type="email" 
+                placeholder="name@company.com" 
+                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-purple-500"
+                {...register('email')} 
+              />
+              {errors.email && <p className="text-red-400 text-xs">{errors.email.message}</p>}
+            </div>
 
-          <div style={{ marginBottom: 24 }}>
-            <label><Lock size={14} style={{ marginRight: 6 }} /> Password</label>
-            <input type="password" placeholder="••••••••" {...register('password')} />
-            {errors.password && <p>{errors.password.message}</p>}
-          </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300 flex items-center gap-2">
+                <Lock size={14} /> Password
+              </Label>
+              <Input 
+                type="password" 
+                placeholder="••••••••" 
+                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-purple-500"
+                {...register('password')} 
+              />
+              {errors.password && <p className="text-red-400 text-xs">{errors.password.message}</p>}
+            </div>
 
-          <button style={{ width: '100%', padding: 12, fontSize: 16, background: 'linear-gradient(to right, #6366f1, #c084fc)' }} disabled={isSubmitting}>
-            {isSubmitting ? 'Creating account...' : 'Get Started'}
-          </button>
+            <Button 
+              type="submit" 
+              className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white py-6 text-base border-0 mt-2" 
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Creating account...' : 'Get Started'}
+            </Button>
 
-          <div style={{ textAlign: 'center', marginTop: 24, fontSize: 14 }}>
-            <span style={{ color: '#94a3b8' }}>Already have a portal? </span>
-            <Link to="/login" style={{ fontWeight: 600 }}>Sign in</Link>
-          </div>
-        </form>
-      </div>
+            <div className="text-center mt-6 text-sm text-slate-400">
+              Already have a portal?{' '}
+              <Link to="/login" className="text-white font-semibold hover:text-purple-300 transition-colors">
+                Sign in
+              </Link>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

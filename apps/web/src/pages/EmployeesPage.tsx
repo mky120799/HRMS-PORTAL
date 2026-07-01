@@ -2,10 +2,18 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Plus, Search, Mail, User, Briefcase, Trash2 } from 'lucide-react';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
+import { Avatar, AvatarFallback } from '../components/ui/avatar';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 
 const schema = z.object({
   email: z.string().email('Invalid email address'),
@@ -28,108 +36,134 @@ export function EmployeesPage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const list = useQuery({ queryKey: ['employees'], queryFn: async () => (await api.get('/employees')).data as Employee[] });
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({ resolver: zodResolver(schema) });
+  
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({ 
+    resolver: zodResolver(schema) 
+  });
 
   const create = useMutation({
     mutationFn: async (body: FormData) => api.post('/employees', body),
     onSuccess: () => {
       reset();
       qc.invalidateQueries({ queryKey: ['employees'] });
-      showToast('Employee added to the roster');
+      showToast('Employee added to the roster', 'success');
     },
     onError: (error) => showToast(getErrorMessage(error), 'error'),
   });
 
   return (
-    <div className="employees-page">
-      <div className="topbar">
-        <h2>Employee Roster</h2>
-        <div className="row gap">
-          <div style={{ position: 'relative' }}>
-            <Search size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input placeholder="Search employees..." style={{ paddingLeft: 40, width: 300, background: 'white' }} />
-          </div>
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Employee Roster</h2>
+          <p className="text-muted-foreground mt-2">Manage your organization's members.</p>
+        </div>
+        <div className="relative w-full md:w-[300px]">
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Search employees..." className="pl-10 bg-white/50 backdrop-blur-sm" />
         </div>
       </div>
 
-      <div className="grid-3" style={{ gridTemplateColumns: '1fr 2fr' }}>
-        <div className="card">
-          <h2>Add New Employee</h2>
-          <form onSubmit={handleSubmit((v) => create.mutate(v))}>
-            <div style={{ marginBottom: 16 }}>
-              <label>First Name</label>
-              <input placeholder="John" {...register('firstName')} />
-              {errors.firstName && <p>{errors.firstName.message}</p>}
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label>Last Name</label>
-              <input placeholder="Doe" {...register('lastName')} />
-              {errors.lastName && <p>{errors.lastName.message}</p>}
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label>Email Address</label>
-              <input placeholder="john.doe@company.com" {...register('email')} />
-              {errors.email && <p>{errors.email.message}</p>}
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <label>Department</label>
-              <input placeholder="Engineering" {...register('department')} />
-            </div>
-            <button style={{ width: '100%' }} disabled={create.isPending}>
-              <Plus size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-              {create.isPending ? 'Adding...' : 'Add Employee'}
-            </button>
-          </form>
-        </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-1 bg-white/50 backdrop-blur-xl h-fit">
+          <CardHeader>
+            <CardTitle>Add New Employee</CardTitle>
+            <CardDescription>Invite a new member to your tenant.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit((v) => create.mutate(v))} className="space-y-4">
+              <div className="space-y-2">
+                <Label>First Name</Label>
+                <Input placeholder="John" {...register('firstName')} className="bg-white/50" />
+                {errors.firstName && <p className="text-red-500 text-xs">{errors.firstName.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>Last Name</Label>
+                <Input placeholder="Doe" {...register('lastName')} className="bg-white/50" />
+                {errors.lastName && <p className="text-red-500 text-xs">{errors.lastName.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>Email Address</Label>
+                <Input placeholder="john.doe@company.com" {...register('email')} className="bg-white/50" />
+                {errors.email && <p className="text-red-500 text-xs">{errors.email.message}</p>}
+              </div>
+              <div className="space-y-2 pb-2">
+                <Label>Department</Label>
+                <Input placeholder="Engineering" {...register('department')} className="bg-white/50" />
+              </div>
+              <Button type="submit" className="w-full bg-indigo-500 hover:bg-indigo-600 text-white" disabled={create.isPending || isSubmitting}>
+                <Plus size={18} className="mr-2" />
+                {create.isPending || isSubmitting ? 'Adding...' : 'Add Employee'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
 
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '24px 24px 0' }}>
-            <h2>All Employees</h2>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Department</th>
-                  <th>Email</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+        <Card className="lg:col-span-2 bg-white/50 backdrop-blur-xl overflow-hidden">
+          <CardHeader>
+            <CardTitle>All Employees</CardTitle>
+            <CardDescription>A list of all employees in your organization.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-slate-50/50">
+                <TableRow>
+                  <TableHead className="pl-6">Employee</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead className="text-right pr-6">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {list.data?.map((e) => (
-                  <tr key={e.id}>
-                    <td>
-                      <div className="row gap">
-                        <div style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', width: 32, height: 32, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 600 }}>
-                          {e.firstName.charAt(0)}{e.lastName.charAt(0)}
-                        </div>
-                        <span style={{ fontWeight: 500 }}>{e.firstName} {e.lastName}</span>
+                  <TableRow key={e.id} className="hover:bg-slate-50/50">
+                    <TableCell className="pl-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback className="bg-indigo-100 text-indigo-700 font-medium">
+                            {e.firstName.charAt(0)}{e.lastName.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{e.firstName} {e.lastName}</span>
                       </div>
-                    </td>
-                    <td>
-                      <span style={{ background: 'rgba(0,0,0,0.05)', padding: '4px 8px', borderRadius: 4, fontSize: 13 }}>
-                        {e.department ?? 'Unassigned'}
-                      </span>
-                    </td>
-                    <td style={{ color: 'var(--text-muted)', fontSize: 14 }}>{e.email}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button style={{ background: 'transparent', color: '#ef4444', padding: 4 }}>
+                    </TableCell>
+                    <TableCell>
+                      {e.department ? (
+                        <Badge variant="secondary" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-normal">
+                          {e.department}
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-muted-foreground italic">Unassigned</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{e.email}</TableCell>
+                    <TableCell className="text-right pr-6">
+                      <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 w-8">
                         <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
+                
                 {list.isLoading && (
-                  <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 40 }}>Loading data...</td></tr>
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
+                      Loading data...
+                    </TableCell>
+                  </TableRow>
                 )}
+                
                 {!list.isLoading && (list.data?.length ?? 0) === 0 && (
-                  <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 40 }}>No employees found.</td></tr>
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
+                      No employees found.
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

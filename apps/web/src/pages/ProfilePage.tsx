@@ -1,6 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { User, Mail, Shield, Building2, Calendar, MapPin } from 'lucide-react';
 import { api } from '../lib/api';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Avatar, AvatarFallback } from '../components/ui/avatar';
+import { Button } from '../components/ui/button';
+import { Separator } from '../components/ui/separator';
 
 export function ProfilePage() {
   const { data: user, isLoading } = useQuery({
@@ -9,85 +13,94 @@ export function ProfilePage() {
   });
 
   if (isLoading) {
-    return <div className="muted p-4">Loading profile...</div>;
+    return <div className="text-muted-foreground p-8 text-center">Loading profile...</div>;
   }
 
   return (
-    <div className="profile">
-      <div className="topbar">
-        <h2>My Profile</h2>
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">My Profile</h2>
+        <p className="text-muted-foreground mt-2">Manage your personal information and account settings.</p>
       </div>
 
-      <div className="grid-3" style={{ gridTemplateColumns: '1fr 2fr' }}>
-        <div className="card text-center">
-          <div style={{ 
-            background: 'var(--primary)', 
-            color: 'white', 
-            width: 80, 
-            height: 80, 
-            borderRadius: '50%', 
-            display: 'grid', 
-            placeItems: 'center', 
-            fontSize: 32, 
-            fontWeight: 700,
-            margin: '0 auto 16px'
-          }}>
-            {user?.name?.charAt(0)}
-          </div>
-          <h3 style={{ marginBottom: 4 }}>{user?.name}</h3>
-          <div style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 16 }}>{user?.role}</div>
-          
-          <div style={{ textAlign: 'left', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: 16 }}>
-             <div className="row gap" style={{ marginBottom: 12, fontSize: 14 }}>
-                <Mail size={16} color="var(--text-muted)" />
-                <span>{user?.email}</span>
-             </div>
-             <div className="row gap" style={{ marginBottom: 12, fontSize: 14 }}>
-                <Building2 size={16} color="var(--text-muted)" />
-                <span>{user?.tenantId}</span>
-             </div>
-          </div>
-        </div>
+      <div className="grid gap-6 md:grid-cols-3">
+        {/* Left Column (Identity) */}
+        <Card className="md:col-span-1 bg-white/50 backdrop-blur-xl h-fit">
+          <CardContent className="pt-8 flex flex-col items-center text-center">
+            <Avatar className="h-24 w-24 mb-4 border-4 border-background shadow-sm">
+              <AvatarFallback className="bg-indigo-100 text-indigo-700 text-3xl font-semibold">
+                {user?.name?.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
+            
+            <h3 className="text-xl font-bold">{user?.name}</h3>
+            <div className="text-indigo-600 font-medium text-sm mb-6">{user?.role}</div>
+            
+            <div className="w-full space-y-4 pt-6 border-t border-border/50 text-left">
+              <div className="flex items-center gap-3 text-sm">
+                <Mail size={16} className="text-muted-foreground" />
+                <span className="font-medium text-slate-700">{user?.email}</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <Building2 size={16} className="text-muted-foreground" />
+                <span className="font-medium text-slate-700">{user?.tenantId}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="card">
-          <h3 style={{ marginBottom: 20 }}>Account Details</h3>
-          <div style={{ display: 'grid', gap: 24 }}>
-            <div className="row gap" style={{ alignItems: 'flex-start' }}>
-              <Shield size={20} style={{ marginTop: 2 }} color="var(--primary)" />
+        {/* Right Column (Details) */}
+        <Card className="md:col-span-2 bg-white/50 backdrop-blur-xl">
+          <CardHeader>
+            <CardTitle>Account Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-8">
+            <div className="flex gap-4 items-start">
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
+                <Shield size={20} />
+              </div>
               <div>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Security Role</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-                  You are currently logged in as an <strong>{user?.role}</strong>. This gives you 
+                <div className="font-semibold text-slate-800 mb-1">Security Role</div>
+                <div className="text-sm text-muted-foreground leading-relaxed">
+                  You are currently logged in as an <strong className="text-slate-700">{user?.role}</strong>. This gives you 
                   access to {user?.role === 'ADMIN' ? 'all administrative features and reporting.' : 'your basic attendance and employee records.'}
                 </div>
               </div>
             </div>
 
-            <div className="row gap" style={{ alignItems: 'flex-start' }}>
-              <MapPin size={20} style={{ marginTop: 2 }} color="var(--primary)" />
+            <div className="flex gap-4 items-start">
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg shrink-0">
+                <MapPin size={20} />
+              </div>
               <div>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Location & Region</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+                <div className="font-semibold text-slate-800 mb-1">Location & Region</div>
+                <div className="text-sm text-muted-foreground leading-relaxed">
                   Primary office: HQ (Global Operations)
                 </div>
               </div>
             </div>
 
-            <div className="row gap" style={{ alignItems: 'flex-start' }}>
-                <Calendar size={20} style={{ marginTop: 2 }} color="var(--primary)" />
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Member Since</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-                    April 2026
-                  </div>
+            <div className="flex gap-4 items-start">
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg shrink-0">
+                <Calendar size={20} />
+              </div>
+              <div>
+                <div className="font-semibold text-slate-800 mb-1">Member Since</div>
+                <div className="text-sm text-muted-foreground leading-relaxed">
+                  April 2026
                 </div>
               </div>
-          </div>
-
-          <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
-             <button style={{ padding: '8px 24px' }}>Edit Profile</button>
-          </div>
-        </div>
+            </div>
+            
+            <Separator className="my-4" />
+            
+            <div>
+              <Button className="bg-indigo-500 hover:bg-indigo-600 text-white px-8">
+                Edit Profile
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

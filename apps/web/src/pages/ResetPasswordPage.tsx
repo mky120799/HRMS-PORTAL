@@ -8,6 +8,11 @@ import { api } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { getErrorMessage } from '../lib/errors';
 
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Button } from '../components/ui/button';
+
 const requestSchema = z.object({
   tenantId: z.string().min(1, 'Tenant ID is required'),
   email: z.string().email(),
@@ -47,55 +52,87 @@ export function ResetPasswordPage() {
   };
 
   return (
-    <div className="auth-wrap">
-      <div className="card">
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ display: 'inline-flex', padding: 12, background: 'rgba(99, 102, 241, 0.2)', borderRadius: 12, marginBottom: 16 }}>
-            <KeyRound size={32} color="#818cf8" />
+    <div className="min-h-screen grid place-items-center bg-gradient-to-br from-slate-900 to-indigo-950 p-4">
+      <Card className="w-full max-w-[440px] bg-white/5 border-white/10 text-white backdrop-blur-xl">
+        <CardHeader className="text-center pb-6">
+          <div className="mx-auto mb-4 inline-flex p-3 bg-indigo-500/20 rounded-xl">
+            <KeyRound size={32} className="text-indigo-400" />
           </div>
-          <h2 style={{ marginBottom: 8 }}>{token ? 'Set New Password' : 'Reset Password'}</h2>
-          <p style={{ color: '#94a3b8', fontSize: 14 }}>
+          <CardTitle className="text-2xl font-bold">{token ? 'Set New Password' : 'Reset Password'}</CardTitle>
+          <CardDescription className="text-slate-400">
             {token ? 'Type your new secure password below.' : 'Enter your details to receive a reset link.'}
-          </p>
-        </div>
+          </CardDescription>
+        </CardHeader>
 
-        {successMsg && !token ? (
-          <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: 16, borderRadius: 8, color: '#10b981', textAlign: 'center', marginBottom: 20 }}>
-            {successMsg}
+        <CardContent>
+          {successMsg && !token ? (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-lg text-emerald-400 text-center mb-5 text-sm">
+              {successMsg}
+            </div>
+          ) : !token ? (
+            <form onSubmit={reqForm.handleSubmit(onRequest)} className="space-y-5">
+              <div className="space-y-2">
+                <Label className="text-slate-300 flex items-center gap-2">
+                  <Building2 size={14} /> Tenant ID
+                </Label>
+                <Input 
+                  placeholder="UUID" 
+                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500"
+                  {...reqForm.register('tenantId')} 
+                />
+                {reqForm.formState.errors.tenantId && <p className="text-red-400 text-xs">{reqForm.formState.errors.tenantId.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-300 flex items-center gap-2">
+                  <Mail size={14} /> Email
+                </Label>
+                <Input 
+                  type="email" 
+                  placeholder="name@company.com" 
+                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500"
+                  {...reqForm.register('email')} 
+                />
+                {reqForm.formState.errors.email && <p className="text-red-400 text-xs">{reqForm.formState.errors.email.message}</p>}
+              </div>
+              <Button 
+                type="submit" 
+                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-6 text-base mt-2" 
+                disabled={reqForm.formState.isSubmitting}
+              >
+                {reqForm.formState.isSubmitting ? 'Sending...' : 'Send Reset Link'}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={resetForm.handleSubmit(onReset)} className="space-y-5">
+              <div className="space-y-2">
+                <Label className="text-slate-300 flex items-center gap-2">
+                  <Lock size={14} /> New Password
+                </Label>
+                <Input 
+                  type="password" 
+                  placeholder="••••••••" 
+                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500"
+                  {...resetForm.register('password')} 
+                />
+                {resetForm.formState.errors.password && <p className="text-red-400 text-xs">{resetForm.formState.errors.password.message}</p>}
+              </div>
+              <Button 
+                type="submit" 
+                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-6 text-base mt-2" 
+                disabled={resetForm.formState.isSubmitting}
+              >
+                {resetForm.formState.isSubmitting ? 'Updating...' : 'Update Password'}
+              </Button>
+            </form>
+          )}
+
+          <div className="text-center mt-6 text-sm text-slate-400">
+            <Link to="/login" className="hover:text-white transition-colors">
+              Back to Login
+            </Link>
           </div>
-        ) : !token ? (
-          <form onSubmit={reqForm.handleSubmit(onRequest)}>
-            <div style={{ marginBottom: 20 }}>
-              <label><Building2 size={14} style={{ marginRight: 6 }} /> Tenant ID</label>
-              <input placeholder="UUID" {...reqForm.register('tenantId')} />
-              {reqForm.formState.errors.tenantId && <p>{reqForm.formState.errors.tenantId.message}</p>}
-            </div>
-            <div style={{ marginBottom: 24 }}>
-              <label><Mail size={14} style={{ marginRight: 6 }} /> Email</label>
-              <input type="email" placeholder="name@company.com" {...reqForm.register('email')} />
-              {reqForm.formState.errors.email && <p>{reqForm.formState.errors.email.message}</p>}
-            </div>
-            <button style={{ width: '100%', padding: 12 }} disabled={reqForm.formState.isSubmitting}>
-              {reqForm.formState.isSubmitting ? 'Sending...' : 'Send Reset Link'}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={resetForm.handleSubmit(onReset)}>
-            <div style={{ marginBottom: 24 }}>
-              <label><Lock size={14} style={{ marginRight: 6 }} /> New Password</label>
-              <input type="password" placeholder="••••••••" {...resetForm.register('password')} />
-              {resetForm.formState.errors.password && <p>{resetForm.formState.errors.password.message}</p>}
-            </div>
-            <button style={{ width: '100%', padding: 12 }} disabled={resetForm.formState.isSubmitting}>
-              {resetForm.formState.isSubmitting ? 'Updating...' : 'Update Password'}
-            </button>
-          </form>
-        )}
-
-        <div style={{ textAlign: 'center', marginTop: 24, fontSize: 14 }}>
-          <Link to="/login" style={{ color: '#94a3b8', textDecoration: 'none' }}>Back to Login</Link>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

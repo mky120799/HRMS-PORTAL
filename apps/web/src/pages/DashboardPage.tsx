@@ -2,11 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { 
   Users, 
   Calendar, 
-  Bell, 
+  Clock,
   TrendingUp,
   UserPlus,
-  CheckCircle,
-  Clock
+  CheckCircle
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -24,6 +23,10 @@ import { api } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { getErrorMessage } from '../lib/errors';
 
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Separator } from '../components/ui/separator';
+
 const data = [
   { name: 'Mon', count: 4 },
   { name: 'Tue', count: 7 },
@@ -35,6 +38,7 @@ const data = [
 export function DashboardPage() {
   const { showToast } = useToast();
   const auth = getAuth();
+  
   const employees = useQuery({ queryKey: ['employees'], queryFn: async () => (await api.get('/employees')).data });
   const leaves = useQuery({ queryKey: ['leave'], queryFn: async () => (await api.get('/leave-requests')).data });
   const attendance = useQuery({ queryKey: ['attendance'], queryFn: async () => (await api.get('/attendance/me')).data });
@@ -62,106 +66,116 @@ export function DashboardPage() {
   };
 
   return (
-    <div className="dashboard">
-      <div className="topbar">
-        <h2>Executive Dashboard</h2>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Executive Dashboard</h2>
+        <p className="text-muted-foreground mt-2">Welcome back to the portal. Here's an overview of your organization.</p>
       </div>
 
-      <div className="grid-3">
-        <div className="card">
-          <div className="row gap" style={{ marginBottom: 16 }}>
-            <div style={{ background: 'rgba(99, 102, 241, 0.1)', padding: 8, borderRadius: 8 }}>
-              <Users size={20} color="#6366f1" />
+      <div className="grid gap-6 md:grid-cols-3">
+        <Card className="bg-white/50 backdrop-blur-xl">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Employees</CardTitle>
+            <div className="h-10 w-10 bg-indigo-500/10 rounded-xl flex items-center justify-center">
+              <Users size={20} className="text-indigo-500" />
             </div>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Total Employees</span>
-          </div>
-          <div style={{ fontSize: 32, fontWeight: 700 }}>{employees.data?.length ?? 0}</div>
-          <div style={{ color: '#10b981', fontSize: 13, marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <TrendingUp size={14} /> +12% from last month
-          </div>
-        </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold">{employees.data?.length ?? 0}</div>
+            <p className="text-xs text-emerald-500 mt-2 flex items-center gap-1 font-medium">
+              <TrendingUp size={14} /> +12% from last month
+            </p>
+          </CardContent>
+        </Card>
 
-        <div className="card">
-          <div className="row gap" style={{ marginBottom: 16 }}>
-            <div style={{ background: 'rgba(245, 158, 11, 0.1)', padding: 8, borderRadius: 8 }}>
-              <Calendar size={20} color="#f59e0b" />
+        <Card className="bg-white/50 backdrop-blur-xl">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Active Leaves</CardTitle>
+            <div className="h-10 w-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
+              <Calendar size={20} className="text-amber-500" />
             </div>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Active Leaves</span>
-          </div>
-          <div style={{ fontSize: 32, fontWeight: 700 }}>{leaves.data?.filter((l: any) => l.status === 'APPROVED').length ?? 0}</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 8 }}>
-            Across all departments
-          </div>
-        </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold">{leaves.data?.filter((l: any) => l.status === 'APPROVED').length ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-2">Across all departments</p>
+          </CardContent>
+        </Card>
 
-        <div className="card">
-          <div className="row gap" style={{ marginBottom: 16 }}>
-            <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: 8, borderRadius: 8 }}>
-              <Clock size={20} color="#ef4444" />
+        <Card className="bg-white/50 backdrop-blur-xl">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Requests</CardTitle>
+            <div className="h-10 w-10 bg-red-500/10 rounded-xl flex items-center justify-center">
+              <Clock size={20} className="text-red-500" />
             </div>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Pending Requests</span>
-          </div>
-          <div style={{ fontSize: 32, fontWeight: 700 }}>{leaves.data?.filter((l: any) => l.status === 'PENDING').length ?? 0}</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 8 }}>
-            Requires admin action
-          </div>
-        </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold">{leaves.data?.filter((l: any) => l.status === 'PENDING').length ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-2">Requires admin action</p>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="grid-3" style={{ gridTemplateColumns: '2fr 1fr' }}>
-        <div className="card">
-          <h2>Hiring Trends</h2>
-          <div style={{ height: 300, width: '100%' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data}>
-                <defs>
-                  <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                />
-                <Area type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#colorCount)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      <div className="grid gap-6 md:grid-cols-3">
+        <Card className="md:col-span-2 bg-white/50 backdrop-blur-xl">
+          <CardHeader>
+            <CardTitle>Hiring Trends</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data}>
+                  <defs>
+                    <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dx={-10} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: '1px solid rgba(0,0,0,0.1)', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Area type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="card">
-          <h2>Quick Actions</h2>
-          <div style={{ display: 'grid', gap: 12 }}>
-            <button className="row gap" style={{ background: 'rgba(99, 102, 241, 0.05)', color: 'var(--text-main)', textAlign: 'left', justifyContent: 'flex-start' }}>
-              <UserPlus size={18} color="#6366f1" /> Add New Employee
-            </button>
-            <button className="row gap" style={{ background: 'rgba(16, 185, 129, 0.05)', color: 'var(--text-main)', textAlign: 'left', justifyContent: 'flex-start' }}>
-              <CheckCircle size={18} color="#10b981" /> Approve Leaves
-            </button>
+        <Card className="bg-white/50 backdrop-blur-xl flex flex-col">
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 flex-1">
+            <Button variant="outline" className="w-full justify-start h-12 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 border-indigo-100">
+              <UserPlus size={18} className="mr-2" /> Add New Employee
+            </Button>
+            <Button variant="outline" className="w-full justify-start h-12 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 border-emerald-100">
+              <CheckCircle size={18} className="mr-2" /> Approve Leaves
+            </Button>
             
-            <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-              <h3 style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 12 }}>My Attendance Today</h3>
+            <div className="mt-auto pt-6">
+              <Separator className="mb-6" />
+              <h3 className="text-sm font-semibold text-muted-foreground mb-4">My Attendance Today</h3>
               {todayRecord?.clockIn ? (
                 todayRecord.clockOut ? (
-                  <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: 12, borderRadius: 8, textAlign: 'center', fontSize: 14, fontWeight: 500 }}>
+                  <div className="bg-emerald-500/10 text-emerald-600 p-4 rounded-xl text-center text-sm font-medium border border-emerald-500/20">
                     Shift Completed! 🎉
                   </div>
                 ) : (
-                  <button onClick={handleClockOut} style={{ width: '100%', background: '#ef4444', color: '#fff', padding: 12 }}>
+                  <Button onClick={handleClockOut} variant="destructive" className="w-full h-12 font-medium text-base">
                     Clock Out
-                  </button>
+                  </Button>
                 )
               ) : (
-                <button onClick={handleClockIn} style={{ width: '100%', background: '#10b981', color: '#fff', padding: 12 }}>
+                <Button onClick={handleClockIn} className="w-full h-12 bg-emerald-500 hover:bg-emerald-600 font-medium text-base">
                   Clock In
-                </button>
+                </Button>
               )}
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

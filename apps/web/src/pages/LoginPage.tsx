@@ -8,6 +8,11 @@ import { getErrorMessage } from '../lib/errors';
 import { setAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Button } from '../components/ui/button';
+
 const schema = z.object({
   tenantId: z.string().min(1, 'Tenant ID or Slug is required'),
   email: z.string().email('Invalid email address'),
@@ -40,48 +45,78 @@ export function LoginPage() {
   };
 
   return (
-    <div className="auth-wrap">
-      <div className="card">
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ display: 'inline-flex', padding: 12, background: 'rgba(99, 102, 241, 0.2)', borderRadius: 12, marginBottom: 16 }}>
-            <LogIn size={32} color="#818cf8" />
+    <div className="min-h-screen grid place-items-center bg-gradient-to-br from-slate-900 to-indigo-950 p-4">
+      <Card className="w-full max-w-[440px] bg-white/5 border-white/10 text-white backdrop-blur-xl">
+        <CardHeader className="text-center pb-8">
+          <div className="mx-auto mb-4 inline-flex p-3 bg-indigo-500/20 rounded-xl">
+            <LogIn size={32} className="text-indigo-400" />
           </div>
-          <h2 style={{ marginBottom: 8 }}>Welcome Back</h2>
-          <p style={{ color: '#94a3b8', fontSize: 14 }}>Enter your credentials to access your portal</p>
-        </div>
-
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div style={{ marginBottom: 20 }}>
-            <label><Building2 size={14} style={{ marginRight: 6 }} /> Tenant ID / Slug</label>
-            <input placeholder="e.g. acme-corp or UUID" {...register('tenantId')} />
-            {errors.tenantId && <p>{errors.tenantId.message}</p>}
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <label><Mail size={14} style={{ marginRight: 6 }} /> Email Address</label>
-            <input type="email" placeholder="name@company.com" {...register('email')} />
-            {errors.email && <p>{errors.email.message}</p>}
-          </div>
-
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label style={{ margin: 0 }}><Lock size={14} style={{ marginRight: 6 }} /> Password</label>
-              <Link to="/reset-password" style={{ fontSize: 13, color: '#818cf8', textDecoration: 'none' }}>Forgot password?</Link>
+          <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
+          <CardDescription className="text-slate-400">Enter your credentials to access your portal</CardDescription>
+        </CardHeader>
+        
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+            <div className="space-y-2">
+              <Label className="text-slate-300 flex items-center gap-2">
+                <Building2 size={14} /> Tenant ID / Slug
+              </Label>
+              <Input 
+                placeholder="e.g. acme-corp or UUID" 
+                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500"
+                {...register('tenantId')} 
+              />
+              {errors.tenantId && <p className="text-red-400 text-xs">{errors.tenantId.message}</p>}
             </div>
-            <input type="password" placeholder="••••••••" {...register('password')} />
-            {errors.password && <p>{errors.password.message}</p>}
-          </div>
 
-          <button style={{ width: '100%', padding: 12, fontSize: 16 }} disabled={isSubmitting}>
-            {isSubmitting ? 'Signing in...' : 'Sign In'}
-          </button>
+            <div className="space-y-2">
+              <Label className="text-slate-300 flex items-center gap-2">
+                <Mail size={14} /> Email Address
+              </Label>
+              <Input 
+                type="email" 
+                placeholder="name@company.com" 
+                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500"
+                {...register('email')} 
+              />
+              {errors.email && <p className="text-red-400 text-xs">{errors.email.message}</p>}
+            </div>
 
-          <div style={{ textAlign: 'center', marginTop: 24, fontSize: 14 }}>
-            <span style={{ color: '#94a3b8' }}>Don't have a portal? </span>
-            <Link to="/signup" style={{ fontWeight: 600 }}>Create one</Link>
-          </div>
-        </form>
-      </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-slate-300 flex items-center gap-2">
+                  <Lock size={14} /> Password
+                </Label>
+                <Link to="/reset-password" className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                  Forgot password?
+                </Link>
+              </div>
+              <Input 
+                type="password" 
+                placeholder="••••••••" 
+                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500"
+                {...register('password')} 
+              />
+              {errors.password && <p className="text-red-400 text-xs">{errors.password.message}</p>}
+            </div>
+
+            <Button 
+              type="submit" 
+              className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-6 text-base mt-2" 
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Signing in...' : 'Sign In'}
+            </Button>
+
+            <div className="text-center mt-6 text-sm text-slate-400">
+              Don't have a portal?{' '}
+              <Link to="/signup" className="text-white font-semibold hover:text-indigo-300 transition-colors">
+                Create one
+              </Link>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
