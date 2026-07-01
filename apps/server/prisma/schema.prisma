@@ -20,6 +20,8 @@ model Tenant {
   leaves        LeaveRequest[]
   notifications Notification[]
   attendance    AttendanceRecord[]
+  salaryStructures SalaryStructure[]
+  payslips      Payslip[]
 }
 
 model User {
@@ -54,6 +56,8 @@ model Employee {
   user   User?          @relation(fields: [userId], references: [id])
   leaves LeaveRequest[]
   attendance AttendanceRecord[]
+  salaryStructure SalaryStructure?
+  payslips Payslip[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -102,6 +106,7 @@ model Application {
   candidateEmail String
   resumeUrl      String?
   resumeFilename String?
+  aiScore        Int?     // Match percentage (0-100)
   status         String   @default("PENDING") // PENDING, INTERVIEW, HIRED, REJECTED
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -144,5 +149,42 @@ model AttendanceRecord {
   employee Employee @relation(fields: [employeeId], references: [id])
 
   @@unique([employeeId, date])
+  @@index([tenantId])
+}
+
+model SalaryStructure {
+  id         String   @id @default(uuid())
+  tenantId   String
+  employeeId String   @unique
+  baseSalary Float
+  allowances Float    @default(0)
+  deductions Float    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([tenantId])
+}
+
+model Payslip {
+  id           String   @id @default(uuid())
+  tenantId     String
+  employeeId   String
+  month        Int      // 1 to 12
+  year         Int
+  basicPay     Float
+  allowances   Float
+  deductions   Float
+  netPay       Float
+  pdfUrl       String?
+  status       String   @default("GENERATED") // GENERATED, PAID
+  createdAt    DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, month, year])
   @@index([tenantId])
 }

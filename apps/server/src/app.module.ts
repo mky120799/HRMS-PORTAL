@@ -11,6 +11,7 @@ import { HiringModule } from './modules/hiring/hiring.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
     TenantsModule,
     NotificationsModule,
     AttendanceModule,
+    PayrollModule,
   ],
   controllers: [AppController],
   providers: [AppService],

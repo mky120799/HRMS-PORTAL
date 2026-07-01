@@ -15,6 +15,7 @@ export class HiringService {
   constructor(
     private prisma: PrismaService,
     @InjectQueue('notifications') private readonly notificationsQueue: Queue,
+    @InjectQueue('hiring') private readonly hiringQueue: Queue,
   ) {
     if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
       this.s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -101,7 +102,7 @@ export class HiringService {
        fileStream.resume(); 
     }
 
-    return this.prisma.application.create({
+    const application = await this.prisma.application.create({
       data: {
         jobId,
         candidateName,
@@ -111,6 +112,16 @@ export class HiringService {
         resumeUrl,
       },
     });
+
+    if (resumeFilename) {
+      await this.hiringQueue.add('screen-resume', {
+        applicationId: application.id,
+        jobId,
+        resumeKey: resumeFilename
+      });
+    }
+
+    return application;
   }
 
   async updateApplicationStatus(id: string, status: string) {
