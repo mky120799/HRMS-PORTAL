@@ -1,4 +1,5 @@
-import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AiService } from './ai.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -39,5 +40,14 @@ export class AiController {
     });
 
     return { reply };
+  }
+
+  @Post('parse-resume')
+  @UseInterceptors(FileInterceptor('resume'))
+  async parseResume(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      return { name: '', email: '', phone: '', skills: [], experienceYears: 0, summary: '' };
+    }
+    return this.aiService.parseResume(file.buffer, file.mimetype);
   }
 }
