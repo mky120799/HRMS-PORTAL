@@ -108,6 +108,29 @@ export function LoginPage() {
               {isSubmitting ? 'Signing in...' : 'Sign In'}
             </Button>
 
+            {/* Google SSO Divider */}
+            <div className="relative my-2">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-transparent px-3 text-slate-500">or continue with</span>
+              </div>
+            </div>
+
+            <a
+              href={`${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/auth/google`}
+              className="flex w-full items-center justify-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+            >
+              <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                <path fill="#4285F4" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.1 29.3 35 24 35c-6.1 0-11-4.9-11-11s4.9-11 11-11c2.8 0 5.3 1 7.2 2.7l5.7-5.7C33.1 7.1 28.8 5 24 5 12.9 5 4 13.9 4 25s8.9 20 20 20c11 0 19.7-8 19.7-20 0-1.2-.1-2.3-.1-3.5l.1-.5z" />
+                <path fill="#34A853" d="M6.3 15.2l6.6 4.8C14.5 17 19 14 24 14c2.8 0 5.3 1 7.2 2.7l5.7-5.7C33.1 7.1 28.8 5 24 5c-7.5 0-14 4.1-17.7 10.2z" />
+                <path fill="#FBBC05" d="M24 45c5.2 0 9.9-1.8 13.5-4.7l-6.2-5.2C29.6 36.6 27 37.5 24 37.5c-5.2 0-9.7-3-11.4-7.3l-6.6 5.1C9.9 41 16.4 45 24 45z" />
+                <path fill="#EA4335" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.3 4.1-4.2 5.4l6.2 5.2C37 36.8 44 32 44 25c0-1.5-.2-2.9-.4-4.5z" />
+              </svg>
+              Sign in with Google
+            </a>
+
             <div className="text-center mt-6 text-sm text-slate-400">
               Don't have a portal?{' '}
               <Link to="/signup" className="text-white font-semibold hover:text-indigo-300 transition-colors">

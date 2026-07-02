@@ -1,4 +1,6 @@
-import { Controller, Post, Body, Get, UsePipes, UnauthorizedException, Request, UseGuards, ConflictException } from '@nestjs/common';
+import { Controller, Post, Body, Get, UsePipes, UnauthorizedException, Request, UseGuards, ConflictException, Res } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { loginSchema } from './dto/login.dto';
 import type { LoginDto } from './dto/login.dto';
@@ -80,5 +82,24 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async logout(@Request() req: any) {
     return this.authService.logout(req.user.sub);
+  }
+
+  // ─── Google SSO ───────────────────────────────────────────────────────────────
+
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  async googleAuth() {
+    // Initiates Google OAuth redirect — handled by PassportStrategy
+  }
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleCallback(@Request() req: any, @Res() res: Response) {
+    const authData = await this.authService.login(req.user);
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+    // Redirect to frontend with tokens as query params
+    res.redirect(
+      `${frontendUrl}/auth/callback?accessToken=${authData.accessToken}&refreshToken=${authData.refreshToken}`
+    );
   }
 }

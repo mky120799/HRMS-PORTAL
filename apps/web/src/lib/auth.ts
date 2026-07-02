@@ -37,3 +37,6 @@ export function hasRole(allowed: string[]) {
   if (!auth) return false;
   return allowed.includes(auth.user.role);
 }
+
+// Alias used by the Google SSO callback page
+export const saveAuth = setAuth;

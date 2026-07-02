@@ -72,4 +72,18 @@ export class HiringController {
     }
     return this.hiringService.updateApplicationStatus(id, status);
   }
+
+  @Post('applications/:id/schedule-interview')
+  @UseGuards(JwtAuthGuard)
+  async scheduleInterview(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('interviewerEmail') interviewerEmail?: string,
+  ) {
+    if (req.user.role !== 'ADMIN' && req.user.role !== 'MANAGER') {
+      throw new ForbiddenException('Admin or Manager only');
+    }
+    return this.hiringService.scheduleInterview(id, interviewerEmail ?? req.user.email);
+  }
 }
+

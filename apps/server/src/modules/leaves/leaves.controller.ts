@@ -1,6 +1,8 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request, UsePipes, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request, UsePipes, NotFoundException, Patch } from '@nestjs/common';
 import { LeavesService } from './leaves.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { createLeaveRequestSchema } from './dto/create-leave.dto';
 import type { CreateLeaveRequestDto } from './dto/create-leave.dto';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -28,5 +30,16 @@ export class LeavesController {
       throw new NotFoundException('Leave request not found');
     }
     return leave;
+  }
+
+  @Patch(':id/status')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'MANAGER')
+  async updateStatus(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('status') status: 'APPROVED' | 'REJECTED',
+  ) {
+    return this.leavesService.updateStatus(req.user.tenantId, id, status, req.user.name ?? 'Admin');
   }
 }

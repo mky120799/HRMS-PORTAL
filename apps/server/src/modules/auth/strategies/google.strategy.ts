@@ -30,7 +30,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const email = emails?.[0]?.value;
 
     if (!email) {
-      return done(new Error('No email provided by Google'), null);
+      return done(new Error('No email provided by Google'), false);
     }
 
     try {
@@ -43,7 +43,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
         // Auto-provision: find the first tenant or create a default one
         const tenant = await this.prisma.tenant.findFirst();
         if (!tenant) {
-          return done(new Error('No tenant configured. Please create an account first.'), null);
+        return done(new Error('No tenant configured. Please create an account first.'), false);
         }
 
         user = await this.prisma.user.create({
@@ -62,7 +62,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       return done(null, safeUser);
     } catch (error: any) {
       this.logger.error(`Google SSO error: ${error.message}`);
-      return done(error, null);
+      return done(error, false);
     }
   }
 }

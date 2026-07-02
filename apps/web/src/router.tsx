@@ -16,6 +16,7 @@ import { AttendancePayrollPage } from './pages/AttendancePayrollPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { PerformancePage } from './pages/PerformancePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { AuthCallbackPage } from './pages/AuthCallbackPage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -39,6 +40,7 @@ export function AppRouter() {
       <Route path="/careers" element={<CareersPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route element={<Protected />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/employees" element={<EmployeesPage />} />

@@ -6,6 +6,8 @@ import { Queue } from 'bullmq';
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import * as crypto from 'crypto';
+import { SlackService } from '../integrations/slack.service';
+import { CalendarService } from '../integrations/calendar.service';
 
 @Injectable()
 export class HiringService {
@@ -16,6 +18,8 @@ export class HiringService {
     private prisma: PrismaService,
     @InjectQueue('notifications') private readonly notificationsQueue: Queue,
     @InjectQueue('hiring') private readonly hiringQueue: Queue,
+    private slackService: SlackService,
+    private calendarService: CalendarService,
   ) {
     if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
       this.s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -121,7 +125,37 @@ export class HiringService {
       });
     }
 
+    // Fire Slack alert for new application (non-blocking)
+    this.slackService.sendNewApplicationAlert({
+      jobTitle: job.title,
+      candidateName,
+      candidateEmail,
+    }).catch(() => {});
+
     return application;
+  }
+
+  async scheduleInterview(applicationId: string, interviewerEmail?: string): Promise<{ eventLink: string; meetLink: string | null }> {
+    const application = await this.prisma.application.findUnique({
+      where: { id: applicationId },
+      include: { job: true },
+    });
+    if (!application) throw new BadRequestException('Application not found');
+
+    const result = await this.calendarService.createInterviewEvent({
+      jobTitle: application.job.title,
+      candidateName: application.candidateName,
+      candidateEmail: application.candidateEmail,
+      interviewerEmail,
+    });
+
+    // Update status to INTERVIEW
+    await this.prisma.application.update({
+      where: { id: applicationId },
+      data: { status: 'INTERVIEW' },
+    });
+
+    return result;
   }
 
   async updateApplicationStatus(id: string, status: string) {
