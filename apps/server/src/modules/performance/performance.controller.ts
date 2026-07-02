@@ -10,14 +10,14 @@ export class PerformanceController {
   constructor(private readonly performanceService: PerformanceService) {}
 
   @Get('me')
-  async getMyReviews(@Request() req) {
+  async getMyReviews(@Request() req: any) {
     if (!req.user.employeeId) return [];
     return this.performanceService.getMyReviews(req.user.tenantId, req.user.employeeId);
   }
 
   @Get('team')
   @Roles('ADMIN', 'MANAGER')
-  async getTeamReviews(@Request() req) {
+  async getTeamReviews(@Request() req: any) {
     // In a real app, this would get reviews for the manager's direct reports
     if (!req.user.employeeId) return [];
     return this.performanceService.getReviewsToManager(req.user.tenantId, req.user.employeeId);
@@ -25,13 +25,13 @@ export class PerformanceController {
 
   @Get('all')
   @Roles('ADMIN')
-  async getAllReviews(@Request() req) {
+  async getAllReviews(@Request() req: any) {
     return this.performanceService.getAllReviews(req.user.tenantId);
   }
 
   @Post('cycle')
   @Roles('ADMIN')
-  async createCycle(@Request() req, @Body() body: { cycleName: string }) {
+  async createCycle(@Request() req: any, @Body() body: { cycleName: string }) {
     return this.performanceService.createReviewCycle({
       tenantId: req.user.tenantId,
       cycleName: body.cycleName,
@@ -39,13 +39,13 @@ export class PerformanceController {
   }
 
   @Patch(':id/self')
-  async submitSelfReview(@Param('id') id: string, @Request() req, @Body() body: { selfRating: number; comments: string }) {
+  async submitSelfReview(@Param('id') id: string, @Request() req: any, @Body() body: { selfRating: number; comments: string }) {
     return this.performanceService.submitSelfReview(id, req.user.tenantId, req.user.employeeId, body.selfRating, body.comments);
   }
 
   @Patch(':id/manager')
   @Roles('ADMIN', 'MANAGER')
-  async submitManagerReview(@Param('id') id: string, @Request() req, @Body() body: { managerRating: number; comments: string }) {
+  async submitManagerReview(@Param('id') id: string, @Request() req: any, @Body() body: { managerRating: number; comments: string }) {
     return this.performanceService.submitManagerReview(id, req.user.tenantId, req.user.employeeId, body.managerRating, body.comments);
   }
 }

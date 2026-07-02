@@ -10,7 +10,7 @@ export class PayrollController {
   constructor(private readonly payrollService: PayrollService) {}
 
   @Get('my-payslips')
-  async getMyPayslips(@Request() req) {
+  async getMyPayslips(@Request() req: any) {
     // Only fetch for employees
     if (!req.user.employeeId) return [];
     return this.payrollService.getMyPayslips(req.user.tenantId, req.user.employeeId);
@@ -18,13 +18,13 @@ export class PayrollController {
 
   @Get('all')
   @Roles('ADMIN', 'MANAGER')
-  async getAllPayslips(@Request() req) {
+  async getAllPayslips(@Request() req: any) {
     return this.payrollService.getAllPayslips(req.user.tenantId);
   }
 
   @Post('generate')
   @Roles('ADMIN')
-  async generatePayslips(@Request() req, @Body() body: { month: number, year: number }) {
+  async generatePayslips(@Request() req: any, @Body() body: { month: number, year: number }) {
     return this.payrollService.generatePayslips(req.user.tenantId, body.month, body.year);
   }
 }

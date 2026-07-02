@@ -22,21 +22,21 @@ export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Get('me')
-  async getMyDocuments(@Request() req) {
+  async getMyDocuments(@Request() req: any) {
     if (!req.user.employeeId) return [];
     return this.documentsService.getMyDocuments(req.user.tenantId, req.user.employeeId);
   }
 
   @Get('all')
   @Roles('ADMIN', 'MANAGER')
-  async getAllDocuments(@Request() req) {
+  async getAllDocuments(@Request() req: any) {
     return this.documentsService.getAllDocuments(req.user.tenantId);
   }
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', { storage }))
   async uploadDocument(
-    @Request() req,
+    @Request() req: any,
     @UploadedFile() file: Express.Multer.File,
     @Body() body: { title: string; type: string; expiryDate?: string }
   ) {
@@ -61,7 +61,7 @@ export class DocumentsController {
   }
 
   @Delete(':id')
-  async deleteDocument(@Param('id') id: string, @Request() req) {
+  async deleteDocument(@Param('id') id: string, @Request() req: any) {
     // Ideally we should check if the document belongs to the user or if they are admin
     return this.documentsService.deleteDocument(id, req.user.tenantId);
   }
