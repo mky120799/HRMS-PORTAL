@@ -16,6 +16,8 @@ import { TenantsModule } from './modules/tenants/tenants.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
+import { DocumentsModule } from './modules/documents/documents.module';
+import { PerformanceModule } from './modules/performance/performance.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
@@ -49,6 +51,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     NotificationsModule,
     AttendanceModule,
     PayrollModule,
+    DocumentsModule,
+    PerformanceModule,
   ],
   controllers: [AppController],
   providers: [

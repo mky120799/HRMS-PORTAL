@@ -8,7 +8,9 @@ import {
   LogOut,
   Building2,
   User,
-  Briefcase
+  Briefcase,
+  FileText,
+  Target
 } from 'lucide-react';
 import { clearAuth, getAuth, hasRole } from '../lib/auth';
 import { Button } from './ui/button';
@@ -75,6 +77,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
             Leave Management
           </NavLink>
           
+          <NavLink 
+            to="/documents" 
+            className={({ isActive }) => cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+              isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <FileText size={20} />
+            Documents
+          </NavLink>
+
+          <NavLink 
+            to="/performance" 
+            className={({ isActive }) => cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+              isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Target size={20} />
+            Performance & OKRs
+          </NavLink>
+
           <NavLink 
             to="/notifications"
             className={({ isActive }) => cn(

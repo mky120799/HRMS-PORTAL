@@ -22,6 +22,8 @@ model Tenant {
   attendance    AttendanceRecord[]
   salaryStructures SalaryStructure[]
   payslips      Payslip[]
+  documents     Document[]
+  performanceReviews PerformanceReview[]
 }
 
 model User {
@@ -60,6 +62,9 @@ model Employee {
   attendance AttendanceRecord[]
   salaryStructure SalaryStructure?
   payslips Payslip[]
+  documents Document[]
+  performanceReviews PerformanceReview[] @relation("EmployeeReviews")
+  managerReviews     PerformanceReview[] @relation("ManagerReviews")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -207,4 +212,42 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, resource])
   @@index([tenantId, userId])
+}
+
+model Document {
+  id         String   @id @default(uuid())
+  tenantId   String
+  employeeId String
+  title      String
+  type       String   @default("OTHER") // ID, CONTRACT, POLICY, OTHER
+  fileUrl    String
+  expiryDate DateTime?
+  createdAt  DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+}
+
+model PerformanceReview {
+  id           String   @id @default(uuid())
+  tenantId     String
+  employeeId   String
+  reviewerId   String?  // Manager who reviews
+  cycleName    String   // e.g., "Q1 2026", "Annual 2026"
+  selfRating   Int?     // 1 to 5
+  managerRating Int?    // 1 to 5
+  comments     String?
+  status       String   @default("DRAFT") // DRAFT, SELF_SUBMITTED, COMPLETED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  employee Employee @relation("EmployeeReviews", fields: [employeeId], references: [id])
+  reviewer Employee? @relation("ManagerReviews", fields: [reviewerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
 }

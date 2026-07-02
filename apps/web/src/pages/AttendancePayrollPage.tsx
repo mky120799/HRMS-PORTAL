@@ -5,16 +5,42 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { useToast } from '../lib/toast';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Play } from 'lucide-react';
 
 export function AttendancePayrollPage() {
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const user = useQuery({ queryKey: ['me'], queryFn: async () => (await api.get('/auth/me')).data });
   const attendance = useQuery({ queryKey: ['attendance'], queryFn: async () => (await api.get('/attendance/me')).data });
-  const payslips = useQuery({ queryKey: ['payslips'], queryFn: async () => (await api.get('/payroll/my-payslips')).data }); // Optional: assuming this exists
+  const payslips = useQuery({ queryKey: ['payslips'], queryFn: async () => (await api.get('/payroll/my-payslips')).data });
+
+  const generateMutation = useMutation({
+    mutationFn: async () => api.post('/payroll/generate', { month: new Date().getMonth() + 1, year: new Date().getFullYear() }),
+    onSuccess: () => {
+      showToast('Payslips generated successfully', 'success');
+      qc.invalidateQueries({ queryKey: ['payslips'] });
+    },
+  });
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Attendance & Payroll</h2>
-        <p className="text-muted-foreground mt-2">View your recent attendance records and payslips.</p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Attendance & Payroll</h2>
+          <p className="text-muted-foreground mt-2">View your recent attendance records and payslips.</p>
+        </div>
+        {user.data?.role === 'ADMIN' && (
+          <Button 
+            onClick={() => generateMutation.mutate()} 
+            disabled={generateMutation.isPending}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            <Play size={16} className="mr-2" />
+            {generateMutation.isPending ? 'Generating...' : 'Generate Monthly Payslips'}
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

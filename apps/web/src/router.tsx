@@ -13,6 +13,8 @@ import { CareersPage } from './pages/CareersPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { AttendancePayrollPage } from './pages/AttendancePayrollPage';
+import { DocumentsPage } from './pages/DocumentsPage';
+import { PerformancePage } from './pages/PerformancePage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -41,8 +43,10 @@ export function AppRouter() {
         <Route path="/employees" element={<EmployeesPage />} />
         <Route path="/attendance" element={<AttendancePayrollPage />} />
         <Route path="/leave" element={<LeavePage />} />
+        <Route path="/documents" element={<DocumentsPage />} />
+        <Route path="/performance" element={<PerformancePage />} />
         <Route path="/profile" element={<ProfilePage />} />
-        <Route element={<RequireRole allowed={['ADMIN']} />}>
+        <Route element={<RequireRole allowed={['ADMIN', 'MANAGER']} />}>
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/hiring" element={<HiringPage />} />
         </Route>
