@@ -2,18 +2,17 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { GoogleGenAI } from '@google/genai';
+import { AiService } from '../ai/ai.service';
 
 @Processor('hiring')
 export class HiringProcessor extends WorkerHost {
   private readonly logger = new Logger(HiringProcessor.name);
-  private ai: GoogleGenAI | null = null;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    private aiService: AiService,
+  ) {
     super();
-    if (process.env.GEMINI_API_KEY) {
-      this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    }
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
@@ -25,40 +24,25 @@ export class HiringProcessor extends WorkerHost {
     }
   }
 
-  async handleScreenResume(data: { applicationId: string, jobId: string, resumeKey: string }) {
+  async handleScreenResume(data: { applicationId: string; jobId: string; resumeKey: string }) {
     this.logger.log(`Screening resume for application ${data.applicationId}...`);
 
     try {
       const job = await this.prisma.job.findUnique({ where: { id: data.jobId } });
       if (!job) return;
 
-      const prompt = `
-        You are an expert HR recruiter.
-        Job Title: ${job.title}
-        Job Description: ${job.description}
-        
-        Evaluate the candidate's resume against this job description.
-        Return a single integer between 0 and 100 representing the match percentage. Do not include any other text.
-      `;
-      
-      let aiScore = 50; 
-      if (this.ai) {
-        const response = await this.ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-        });
-        const text = response.text || "50";
-        aiScore = parseInt(text.trim(), 10) || 50;
-      } else {
-        this.logger.warn('GEMINI_API_KEY not set, using default AI score.');
-      }
+      const { score, reason } = await this.aiService.screenResume(
+        job.title,
+        job.description,
+        data.resumeKey,
+      );
 
       await this.prisma.application.update({
         where: { id: data.applicationId },
-        data: { aiScore },
+        data: { aiScore: score, aiReason: reason },
       });
 
-      this.logger.log(`Application ${data.applicationId} scored: ${aiScore}`);
+      this.logger.log(`Application ${data.applicationId} scored: ${score} — ${reason}`);
     } catch (error: any) {
       this.logger.error(`Failed to screen resume: ${error.message}`);
     }

@@ -18,6 +18,8 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { PerformanceModule } from './modules/performance/performance.module';
+import { AiModule } from './modules/ai/ai.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
@@ -53,6 +55,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     PayrollModule,
     DocumentsModule,
     PerformanceModule,
+    AiModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [

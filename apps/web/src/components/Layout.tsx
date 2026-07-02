@@ -10,12 +10,14 @@ import {
   User,
   Briefcase,
   FileText,
-  Target
+  Target,
+  BarChart3
 } from 'lucide-react';
 import { clearAuth, getAuth, hasRole } from '../lib/auth';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { cn } from '../lib/utils';
+import { AiChatWidget } from './AiChatWidget';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const nav = useNavigate();
@@ -109,7 +111,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Bell size={20} />
             Notifications
           </NavLink>
-          
+
+          {auth?.user.role === 'ADMIN' || auth?.user.role === 'MANAGER' ? (
+            <NavLink 
+              to="/analytics"
+              className={({ isActive }) => cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
+              )}
+            >
+              <BarChart3 size={20} />
+              Analytics
+            </NavLink>
+          ) : null}
+
           {auth?.user.role === 'ADMIN' && (
             <NavLink 
               to="/hiring"
@@ -173,6 +188,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {children}
         </section>
       </main>
+
+      {/* Global AI Chat Widget */}
+      <AiChatWidget />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { AttendancePayrollPage } from './pages/AttendancePayrollPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { PerformancePage } from './pages/PerformancePage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -47,6 +48,7 @@ export function AppRouter() {
         <Route path="/performance" element={<PerformancePage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route element={<RequireRole allowed={['ADMIN', 'MANAGER']} />}>
+          <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/hiring" element={<HiringPage />} />
         </Route>
