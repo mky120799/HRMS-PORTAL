@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import * as pdfParse from 'pdf-parse';
 
 @Injectable()
 export class AiService {
@@ -50,6 +51,75 @@ Respond ONLY with a valid JSON object in this format, with no extra text:
     } catch (err: any) {
       this.logger.error(`AI resume screening failed: ${err.message}`);
       return { score: 0, reason: 'AI screening encountered an error.' };
+    }
+  }
+
+  /**
+   * Parse a resume PDF buffer and extract candidate details using Gemini.
+   */
+  async parseResume(fileBuffer: Buffer, mimeType: string): Promise<{
+    name: string;
+    email: string;
+    phone: string;
+    skills: string[];
+    experienceYears: number;
+    summary: string;
+  }> {
+    const fallback = { name: '', email: '', phone: '', skills: [], experienceYears: 0, summary: '' };
+
+    // Step 1: Extract raw text
+    let resumeText = '';
+    try {
+      if (mimeType === 'application/pdf') {
+        const parsed = await pdfParse(fileBuffer);
+        resumeText = parsed.text;
+      } else {
+        // For DOCX/images, send text representation from filename fallback
+        resumeText = fileBuffer.toString('utf-8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+      }
+    } catch (err: any) {
+      this.logger.error(`Failed to extract resume text: ${err.message}`);
+      return fallback;
+    }
+
+    if (!resumeText.trim() || resumeText.trim().length < 20) {
+      this.logger.warn('Extracted resume text is too short — cannot parse.');
+      return fallback;
+    }
+
+    if (!this.genAI) {
+      // Best-effort regex fallback when no API key configured
+      const emailMatch = resumeText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      const phoneMatch = resumeText.match(/(\+?[0-9]{1,3}[\s.-]?)?\(?[0-9]{3}\)?[\s.-]?[0-9]{3}[\s.-]?[0-9]{4}/);
+      return { ...fallback, email: emailMatch?.[0] ?? '', phone: phoneMatch?.[0] ?? '' };
+    }
+
+    try {
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const prompt = `
+You are an expert resume parser. Extract information from the following resume text.
+
+RESUME TEXT:
+${resumeText.slice(0, 8000)}
+
+Return ONLY a valid JSON object with NO additional text or markdown, using this exact schema:
+{
+  "name": "full name of the candidate",
+  "email": "email address or empty string",
+  "phone": "phone number or empty string",
+  "skills": ["skill1", "skill2", "skill3"],
+  "experienceYears": <integer years of total experience, 0 if unknown>,
+  "summary": "one sentence professional summary"
+}
+`;
+      const result = await model.generateContent(prompt);
+      const text = result.response.text().trim();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('No JSON found in response');
+      return JSON.parse(jsonMatch[0]);
+    } catch (err: any) {
+      this.logger.error(`AI resume parsing failed: ${err.message}`);
+      return fallback;
     }
   }
 
