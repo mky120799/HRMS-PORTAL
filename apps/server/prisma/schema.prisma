@@ -114,6 +114,7 @@ model Application {
   resumeUrl      String?
   resumeFilename String?
   aiScore        Int?     // Match percentage (0-100)
+  aiReason       String?  // Gemini's one-line explanation of the score
   status         String   @default("PENDING") // PENDING, INTERVIEW, HIRED, REJECTED
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
