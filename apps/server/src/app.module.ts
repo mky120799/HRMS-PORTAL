@@ -21,8 +21,10 @@ import { PerformanceModule } from './modules/performance/performance.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { StripeModule } from './modules/stripe/stripe.module';
+import { GdprModule } from './modules/compliance/gdpr.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { IpWhitelistGuard } from './common/guards/ip-whitelist.guard';
 
 @Module({
   imports: [
@@ -59,12 +61,15 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     AiModule,
     AnalyticsModule,
     StripeModule,
+    GdprModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
     // Apply rate limiting globally
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Apply IP Whitelisting globally
+    { provide: APP_GUARD, useClass: IpWhitelistGuard },
     // Apply request logging globally
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     // Apply consistent response shape globally

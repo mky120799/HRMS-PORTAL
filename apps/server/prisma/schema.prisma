@@ -11,6 +11,7 @@ model Tenant {
   id        String   @id @default(uuid())
   name      String
   slug      String   @unique
+  whitelistedIps           String[] @default([])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   stripeCustomerId     String?  @unique
@@ -39,6 +40,8 @@ model User {
   role         String    @default("ADMIN") // ADMIN, MANAGER, EMPLOYEE
   refreshToken String?   // Hashed refresh token for session management
   refreshTokenExpiry DateTime? // When the refresh token expires
+  twoFactorSecret    String?   // TOTP secret key
+  isTwoFactorEnabled Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

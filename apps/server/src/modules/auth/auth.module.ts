@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
+import { TwoFactorAuthService } from './two-factor.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from '../../common/strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
@@ -26,7 +27,7 @@ import { BullModule } from '@nestjs/bullmq';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy],
-  exports: [AuthService],
+  providers: [AuthService, TwoFactorAuthService, JwtStrategy, GoogleStrategy],
+  exports: [AuthService, TwoFactorAuthService],
 })
 export class AuthModule {}

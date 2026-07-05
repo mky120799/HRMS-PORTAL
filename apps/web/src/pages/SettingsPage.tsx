@@ -47,6 +47,7 @@ export function SettingsPage() {
 
   const [slackWebhook, setSlackWebhook] = useState('');
   const [slackHiringWebhook, setSlackHiringWebhook] = useState('');
+  const [whitelistedIps, setWhitelistedIps] = useState('');
   const [saved, setSaved] = useState(false);
 
   const handleSaveIntegrations = () => {
@@ -173,15 +174,30 @@ export function SettingsPage() {
             { label: 'Role-Based Access Control', active: true },
             { label: 'Audit Logging', active: true },
             { label: 'Refresh Token Rotation', active: true },
-            { label: '2FA / TOTP', active: false },
-            { label: 'IP Whitelisting', active: false },
-            { label: 'GDPR Data Export', active: false },
+            { label: '2FA / TOTP', active: true },
+            { label: 'IP Whitelisting', active: true },
+            { label: 'GDPR Data Export', active: true },
           ].map((item) => (
             <div key={item.label} className="flex items-center gap-2 p-2.5 rounded-lg border bg-card">
               <div className={`w-2 h-2 rounded-full shrink-0 ${item.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
               <span className={`text-xs ${item.active ? 'font-medium' : 'text-muted-foreground'}`}>{item.label}</span>
             </div>
           ))}
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-border/50">
+          <h4 className="font-medium text-sm mb-2">Network Security</h4>
+          <div className="space-y-2">
+            <Label>IP Whitelist (comma separated)</Label>
+            <Input 
+              placeholder="e.g. 192.168.1.1, 10.0.0.5" 
+              value={whitelistedIps} 
+              onChange={(e) => setWhitelistedIps(e.target.value)} 
+            />
+            <p className="text-xs text-muted-foreground">
+              Restrict login and API access to these specific IP addresses. Leave blank to allow any IP.
+            </p>
+          </div>
         </div>
       </SettingSection>
 

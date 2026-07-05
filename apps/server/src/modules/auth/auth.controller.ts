@@ -1,7 +1,8 @@
-import { Controller, Post, Body, Get, UsePipes, UnauthorizedException, Request, UseGuards, ConflictException, Res } from '@nestjs/common';
+import { Controller, Post, Body, Get, UsePipes, UnauthorizedException, Request, UseGuards, ConflictException, Res, BadRequestException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
+import { TwoFactorAuthService } from './two-factor.service';
 import { loginSchema } from './dto/login.dto';
 import type { LoginDto } from './dto/login.dto';
 import { registerSchema } from './dto/register.dto';
@@ -16,7 +17,10 @@ import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly twoFactorAuthService: TwoFactorAuthService
+  ) {}
 
   @Post('login')
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 attempts per minute
@@ -82,6 +86,38 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async logout(@Request() req: any) {
     return this.authService.logout(req.user.sub);
+  }
+
+  // ─── 2FA / TOTP ───────────────────────────────────────────────────────────────
+
+  @Post('2fa/generate')
+  @UseGuards(JwtAuthGuard)
+  async generateTwoFactorAuth(@Request() req: any) {
+    const user = await this.authService.getUserProfile(req.user.sub);
+    const { otpauthUrl } = await this.twoFactorAuthService.generateTwoFactorAuthenticationSecret(user);
+    return {
+      qrCodeUrl: await this.twoFactorAuthService.generateQrCodeDataURL(otpauthUrl),
+    };
+  }
+
+  @Post('2fa/turn-on')
+  @UseGuards(JwtAuthGuard)
+  async turnOnTwoFactorAuth(@Request() req: any, @Body('code') code: string) {
+    const user = await this.authService.getUserProfile(req.user.sub);
+    const isValid = await this.twoFactorAuthService.isTwoFactorAuthenticationCodeValid(code, user);
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid 2FA code');
+    }
+    await this.twoFactorAuthService.turnOnTwoFactorAuthentication(user.id);
+    return { message: '2FA successfully enabled' };
+  }
+
+  @Post('2fa/authenticate')
+  async authenticateTwoFactor(@Body('tempToken') tempToken: string, @Body('code') code: string) {
+    if (!tempToken || !code) {
+      throw new BadRequestException('tempToken and code are required');
+    }
+    return this.authService.finalizeTwoFactorLogin(tempToken, code, this.twoFactorAuthService);
   }
 
   // ─── Google SSO ───────────────────────────────────────────────────────────────

@@ -15,6 +15,8 @@ import {
   CreditCard,
   Settings,
   ShieldAlert,
+  Shield,
+  Activity,
 } from "lucide-react";
 import { clearAuth, getAuth, hasRole } from "../lib/auth";
 import { Button } from "./ui/button";
@@ -143,6 +145,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
             Notifications
           </NavLink>
 
+          <NavLink
+            to="/security"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                isActive
+                  ? "bg-primary text-white font-semibold"
+                  : "text-slate-400 hover:text-white hover:bg-white/5",
+              )
+            }
+          >
+            <Shield size={20} />
+            Security & Privacy
+          </NavLink>
+
           {auth?.user.role === "ADMIN" || auth?.user.role === "MANAGER" ? (
             <NavLink
               to="/analytics"
@@ -205,6 +222,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
               >
                 <Settings size={20} />
                 Settings
+              </NavLink>
+
+              <NavLink
+                to="/audit-logs"
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                    isActive
+                      ? "bg-primary text-white font-semibold"
+                      : "text-slate-400 hover:text-white hover:bg-white/5",
+                  )
+                }
+              >
+                <Activity size={20} />
+                Audit Logs
               </NavLink>
             </>
           )}

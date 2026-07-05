@@ -20,6 +20,8 @@ import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BillingPage } from './pages/BillingPage';
 import { SuperAdminPage } from './pages/SuperAdminPage';
+import { SecurityPage } from './pages/SecurityPage';
+import { AuditLogsPage } from './pages/AuditLogsPage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -52,6 +54,7 @@ export function AppRouter() {
         <Route path="/documents" element={<DocumentsPage />} />
         <Route path="/performance" element={<PerformancePage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/security" element={<SecurityPage />} />
         <Route element={<RequireRole allowed={['ADMIN', 'MANAGER']} />}>
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
@@ -60,6 +63,7 @@ export function AppRouter() {
         <Route element={<RequireRole allowed={['ADMIN']} />}>
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/billing" element={<BillingPage />} />
+          <Route path="/audit-logs" element={<AuditLogsPage />} />
         </Route>
         <Route element={<RequireRole allowed={['SUPER_ADMIN']} />}>
           <Route path="/super-admin" element={<SuperAdminPage />} />

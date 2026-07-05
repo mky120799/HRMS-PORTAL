@@ -46,6 +46,16 @@ export class AuthService {
   }
 
   async login(user: any) {
+    if (user.isTwoFactorEnabled) {
+      // Return a temporary token
+      const payload = { sub: user.id, type: '2FA_PENDING', tenantId: user.tenantId };
+      const tempToken = this.jwtService.sign(payload, { expiresIn: '5m' });
+      return {
+        twoFactorRequired: true,
+        tempToken,
+      };
+    }
+
     const { accessToken, refreshToken } = this.generateTokens(user);
     await this.saveRefreshToken(user.id, refreshToken);
     return {
@@ -54,6 +64,38 @@ export class AuthService {
       tokenType: 'Bearer',
       expiresIn: '15m',
       user,
+    };
+  }
+
+  async finalizeTwoFactorLogin(tempToken: string, code: string, twoFactorAuthService: any) {
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(tempToken);
+    } catch {
+      throw new UnauthorizedException('Invalid or expired temporary token');
+    }
+
+    if (payload.type !== '2FA_PENDING') {
+      throw new UnauthorizedException('Invalid token type');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const isValid = await twoFactorAuthService.isTwoFactorAuthenticationCodeValid(code, user);
+    if (!isValid) throw new UnauthorizedException('Invalid 2FA code');
+
+    const { accessToken, refreshToken } = this.generateTokens(user);
+    await this.saveRefreshToken(user.id, refreshToken);
+    
+    const { passwordHash, refreshToken: _, ...safeUser } = user;
+
+    return {
+      accessToken,
+      refreshToken,
+      tokenType: 'Bearer',
+      expiresIn: '15m',
+      user: safeUser,
     };
   }
 
