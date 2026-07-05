@@ -17,6 +17,7 @@ import { DocumentsPage } from './pages/DocumentsPage';
 import { PerformancePage } from './pages/PerformancePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -53,6 +54,9 @@ export function AppRouter() {
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/hiring" element={<HiringPage />} />
+        </Route>
+        <Route element={<RequireRole allowed={['ADMIN']} />}>
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
     </Routes>

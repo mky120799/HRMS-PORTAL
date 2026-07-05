@@ -1,23 +1,23 @@
-import { NavLink, useNavigate, Link } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
+import { NavLink, useNavigate, Link } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Users,
   Calendar,
-  CalendarClock, 
-  Bell, 
+  CalendarClock,
+  Bell,
   LogOut,
   Building2,
   User,
   Briefcase,
   FileText,
   Target,
-  BarChart3
-} from 'lucide-react';
-import { clearAuth, getAuth, hasRole } from '../lib/auth';
-import { Button } from './ui/button';
-import { Avatar, AvatarFallback } from './ui/avatar';
-import { cn } from '../lib/utils';
-import { AiChatWidget } from './AiChatWidget';
+  BarChart3,
+} from "lucide-react";
+import { clearAuth, getAuth, hasRole } from "../lib/auth";
+import { Button } from "./ui/button";
+import { Avatar, AvatarFallback } from "./ui/avatar";
+import { cn } from "../lib/utils";
+import { AiChatWidget } from "./AiChatWidget";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const nav = useNavigate();
@@ -30,108 +30,144 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <h1 className="text-2xl font-bold mb-8 bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
           HRMS Portal
         </h1>
-        
+
         <nav className="flex flex-col gap-2 flex-1">
-          <NavLink 
-            to="/" 
+          <NavLink
+            to="/"
             end
-            className={({ isActive }) => cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-              isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
-            )}
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                isActive
+                  ? "bg-primary text-white font-semibold"
+                  : "text-slate-400 hover:text-white hover:bg-white/5",
+              )
+            }
           >
             <LayoutDashboard size={20} />
             Dashboard
           </NavLink>
-          
-          <NavLink 
+
+          <NavLink
             to="/employees"
-            className={({ isActive }) => cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-              isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
-            )}
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                isActive
+                  ? "bg-primary text-white font-semibold"
+                  : "text-slate-400 hover:text-white hover:bg-white/5",
+              )
+            }
           >
             <Users size={20} />
             Employees
           </NavLink>
-          
-          {hasRole(['ADMIN', 'EMPLOYEE', 'MANAGER']) && (
-            <NavLink 
-              to="/attendance" 
-              className={({ isActive }) => cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
-              )}
+
+          {hasRole(["ADMIN", "EMPLOYEE", "MANAGER"]) && (
+            <NavLink
+              to="/attendance"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                  isActive
+                    ? "bg-primary text-white font-semibold"
+                    : "text-slate-400 hover:text-white hover:bg-white/5",
+                )
+              }
             >
               <Calendar size={20} />
               Attendance & Payroll
             </NavLink>
           )}
-          
-          <NavLink 
-            to="/leave" 
-            className={({ isActive }) => cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-              isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
-            )}
+
+          <NavLink
+            to="/leave"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                isActive
+                  ? "bg-primary text-white font-semibold"
+                  : "text-slate-400 hover:text-white hover:bg-white/5",
+              )
+            }
           >
             <CalendarClock size={20} />
             Leave Management
           </NavLink>
-          
-          <NavLink 
-            to="/documents" 
-            className={({ isActive }) => cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-              isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
-            )}
+
+          <NavLink
+            to="/documents"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                isActive
+                  ? "bg-primary text-white font-semibold"
+                  : "text-slate-400 hover:text-white hover:bg-white/5",
+              )
+            }
           >
             <FileText size={20} />
             Documents
           </NavLink>
 
-          <NavLink 
-            to="/performance" 
-            className={({ isActive }) => cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-              isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
-            )}
+          <NavLink
+            to="/performance"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                isActive
+                  ? "bg-primary text-white font-semibold"
+                  : "text-slate-400 hover:text-white hover:bg-white/5",
+              )
+            }
           >
             <Target size={20} />
             Performance & OKRs
           </NavLink>
 
-          <NavLink 
+          <NavLink
             to="/notifications"
-            className={({ isActive }) => cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-              isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
-            )}
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                isActive
+                  ? "bg-primary text-white font-semibold"
+                  : "text-slate-400 hover:text-white hover:bg-white/5",
+              )
+            }
           >
             <Bell size={20} />
             Notifications
           </NavLink>
 
-          {auth?.user.role === 'ADMIN' || auth?.user.role === 'MANAGER' ? (
-            <NavLink 
+          {auth?.user.role === "ADMIN" || auth?.user.role === "MANAGER" ? (
+            <NavLink
               to="/analytics"
-              className={({ isActive }) => cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
-              )}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                  isActive
+                    ? "bg-primary text-white font-semibold"
+                    : "text-slate-400 hover:text-white hover:bg-white/5",
+                )
+              }
             >
               <BarChart3 size={20} />
               Analytics
             </NavLink>
           ) : null}
 
-          {auth?.user.role === 'ADMIN' && (
-            <NavLink 
+          {auth?.user.role === "ADMIN" && (
+            <NavLink
               to="/hiring"
-              className={({ isActive }) => cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                isActive ? "bg-primary text-white font-semibold" : "text-slate-400 hover:text-white hover:bg-white/5"
-              )}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                  isActive
+                    ? "bg-primary text-white font-semibold"
+                    : "text-slate-400 hover:text-white hover:bg-white/5",
+                )
+              }
             >
               <Briefcase size={20} />
               Hiring
@@ -151,7 +187,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-400"
             onClick={() => {
               clearAuth();
-              nav('/login');
+              nav("/login");
             }}
           >
             <LogOut size={18} />
@@ -171,22 +207,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Avatar>
             <div>
               <div className="font-semibold text-[15px]">{auth?.user.name}</div>
-              <div className="text-muted-foreground text-xs">{auth?.user.role}</div>
+              <div className="text-muted-foreground text-xs">
+                {auth?.user.role}
+              </div>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" asChild className="rounded-full bg-background/50 backdrop-blur-sm">
+            <Button
+              variant="outline"
+              size="icon"
+              asChild
+              className="rounded-full bg-background/50 backdrop-blur-sm"
+            >
               <Link to="/profile">
                 <User size={18} className="text-muted-foreground" />
               </Link>
             </Button>
           </div>
         </header>
-        
-        <section className="animate-fade-in">
-          {children}
-        </section>
+
+        <section className="animate-fade-in">{children}</section>
       </main>
 
       {/* Global AI Chat Widget */}
