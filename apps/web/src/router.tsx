@@ -18,6 +18,8 @@ import { PerformancePage } from './pages/PerformancePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { BillingPage } from './pages/BillingPage';
+import { SuperAdminPage } from './pages/SuperAdminPage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -57,6 +59,10 @@ export function AppRouter() {
         </Route>
         <Route element={<RequireRole allowed={['ADMIN']} />}>
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/billing" element={<BillingPage />} />
+        </Route>
+        <Route element={<RequireRole allowed={['SUPER_ADMIN']} />}>
+          <Route path="/super-admin" element={<SuperAdminPage />} />
         </Route>
       </Route>
     </Routes>

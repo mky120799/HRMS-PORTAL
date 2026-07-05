@@ -12,6 +12,9 @@ import {
   FileText,
   Target,
   BarChart3,
+  CreditCard,
+  Settings,
+  ShieldAlert,
 } from "lucide-react";
 import { clearAuth, getAuth, hasRole } from "../lib/auth";
 import { Button } from "./ui/button";
@@ -158,20 +161,72 @@ export function Layout({ children }: { children: React.ReactNode }) {
           ) : null}
 
           {auth?.user.role === "ADMIN" && (
-            <NavLink
-              to="/hiring"
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                  isActive
-                    ? "bg-primary text-white font-semibold"
-                    : "text-slate-400 hover:text-white hover:bg-white/5",
-                )
-              }
-            >
-              <Briefcase size={20} />
-              Hiring
-            </NavLink>
+            <>
+              <NavLink
+                to="/hiring"
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                    isActive
+                      ? "bg-primary text-white font-semibold"
+                      : "text-slate-400 hover:text-white hover:bg-white/5",
+                  )
+                }
+              >
+                <Briefcase size={20} />
+                Hiring
+              </NavLink>
+              
+              <NavLink
+                to="/billing"
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                    isActive
+                      ? "bg-primary text-white font-semibold"
+                      : "text-slate-400 hover:text-white hover:bg-white/5",
+                  )
+                }
+              >
+                <CreditCard size={20} />
+                Billing
+              </NavLink>
+
+              <NavLink
+                to="/settings"
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                    isActive
+                      ? "bg-primary text-white font-semibold"
+                      : "text-slate-400 hover:text-white hover:bg-white/5",
+                  )
+                }
+              >
+                <Settings size={20} />
+                Settings
+              </NavLink>
+            </>
+          )}
+
+          {auth?.user.role === "SUPER_ADMIN" && (
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-3">System</p>
+              <NavLink
+                to="/super-admin"
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                    isActive
+                      ? "bg-indigo-500 text-white font-semibold"
+                      : "text-slate-400 hover:text-white hover:bg-white/5",
+                  )
+                }
+              >
+                <ShieldAlert size={20} className="text-indigo-400" />
+                Super Admin
+              </NavLink>
+            </div>
           )}
         </nav>
 

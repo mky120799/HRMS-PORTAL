@@ -20,6 +20,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { StripeModule } from './modules/stripe/stripe.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
@@ -57,6 +58,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     PerformanceModule,
     AiModule,
     AnalyticsModule,
+    StripeModule,
   ],
   controllers: [AppController],
   providers: [
