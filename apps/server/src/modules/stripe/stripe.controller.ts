@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Body, Req, Headers, UseGuards, Query } from '@nestjs/common';
 import { StripeService } from './stripe.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 

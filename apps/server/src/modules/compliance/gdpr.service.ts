@@ -31,15 +31,14 @@ export class GdprService {
     }
 
     // Log the export action for compliance
-    await this.auditService.logAction(
-      tenantId,
-      userId,
-      'EXPORT',
-      'gdpr',
-      userId,
-      null,
-      { status: 'success', timestamp: new Date().toISOString() }
-    );
+    await this.auditService.log({
+      tenantId: tenantId,
+      userId: userId,
+      action: 'EXPORT',
+      resource: 'gdpr',
+      resourceId: userId,
+      newValues: { status: 'success', timestamp: new Date().toISOString() }
+    });
 
     // Sanitize sensitive info
     const { passwordHash, refreshToken, twoFactorSecret, ...safeUser } = user;

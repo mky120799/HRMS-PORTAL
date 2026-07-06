@@ -1,18 +1,24 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { authenticator } from 'otplib';
+import { OTP } from 'otplib';
 import * as qrcode from 'qrcode';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
 export class TwoFactorAuthService {
+  private otp = new OTP({ strategy: 'totp' });
+
   constructor(private prisma: PrismaService) {}
 
   public async generateTwoFactorAuthenticationSecret(user: any) {
-    const secret = authenticator.generateSecret();
+    const secret = this.otp.generateSecret();
     const appName = process.env.APP_NAME || 'HRMS Enterprise';
     
     // Create the otpauth:// URI
-    const otpauthUrl = authenticator.keyuri(user.email, appName, secret);
+    const otpauthUrl = this.otp.generateURI({
+      issuer: appName,
+      label: user.email,
+      secret: secret,
+    });
 
     // Update user in DB with secret (but do not enable it yet)
     await this.prisma.user.update({
@@ -36,10 +42,11 @@ export class TwoFactorAuthService {
     if (!user.twoFactorSecret) {
       throw new BadRequestException('2FA is not configured for this user');
     }
-    return authenticator.verify({
+    const result = this.otp.verifySync({
       token: twoFactorAuthenticationCode,
       secret: user.twoFactorSecret,
     });
+    return result.valid;
   }
 
   public async turnOnTwoFactorAuthentication(userId: string) {

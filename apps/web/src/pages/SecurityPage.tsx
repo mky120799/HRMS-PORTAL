@@ -60,7 +60,7 @@ export function SecurityPage() {
       const url = window.URL.createObjectURL(new Blob([blob]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `gdpr-export-${auth?.user.sub}.json`);
+      link.setAttribute('download', `gdpr-export-${auth?.user.id}.json`);
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
