@@ -31,8 +31,14 @@ jobs:
       - name: Build Server
         run: npm run build -w @hrms/server
 
-      # - name: Run Tests
-      #   run: npm run test -w @hrms/server
+      - name: Build Web
+        run: npm run build -w @hrms/web
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium -w @hrms/e2e
+
+      - name: Run E2E Tests
+        run: npm run test -w @hrms/e2e
 
   deploy-aws:
     name: Deploy to AWS ECS
@@ -58,6 +64,18 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init & Apply
+        working-directory: infrastructure/terraform
+        run: |
+          terraform init
+          terraform apply -auto-approve
+        env:
+          TF_VAR_db_password: ${{ secrets.DATABASE_PASSWORD }}
+          TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
 
       - name: Build and push Server image
         env:

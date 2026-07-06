@@ -244,3 +244,24 @@ resource "aws_lb_listener" "http_listener" {
     target_group_arn = aws_lb_target_group.hrms_web_tg.arn
   }
 }
+
+# -----------------------------------------------------------------------------
+# 8. ECR REPOSITORIES
+# -----------------------------------------------------------------------------
+resource "aws_ecr_repository" "hrms_server" {
+  name                 = "hrms-server"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_repository" "hrms_web" {
+  name                 = "hrms-web"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
