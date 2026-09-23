@@ -2,6 +2,9 @@ import { Controller, Get, Post, Body, Param, UseGuards, Request, UsePipes, Patch
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { HiringService } from './hiring.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { RequiresPlan } from '../../common/decorators/plan.decorator';
+import { SubscriptionPlan } from '../../common/subscription/subscription-plans';
 import { createJobSchema } from './dto/job.dto';
 import type { CreateJobDto } from './dto/job.dto';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -16,13 +19,15 @@ export class HiringController {
   }
 
   @Get('jobs')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @RequiresPlan(SubscriptionPlan.BASIC)
   async getJobs(@Request() req: any) {
     return this.hiringService.getJobs(req.user.tenantId);
   }
 
   @Post('jobs')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @RequiresPlan(SubscriptionPlan.BASIC)
   @UsePipes(new ZodValidationPipe(createJobSchema))
   async createJob(@Request() req: any, @Body() dto: CreateJobDto) {
     if (req.user.role !== 'ADMIN') {
@@ -32,7 +37,8 @@ export class HiringController {
   }
 
   @Patch('jobs/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @RequiresPlan(SubscriptionPlan.BASIC)
   async updateJobStatus(@Request() req: any, @Param('id') id: string, @Body('status') status: string) {
     if (req.user.role !== 'ADMIN') {
       throw new ForbiddenException('Admin only');
@@ -41,7 +47,8 @@ export class HiringController {
   }
 
   @Get('applications')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @RequiresPlan(SubscriptionPlan.BASIC)
   async getApplications(@Request() req: any, @Query('jobId') jobId?: string) {
     return this.hiringService.getApplications(req.user.tenantId, jobId);
   }
@@ -65,7 +72,8 @@ export class HiringController {
   }
 
   @Patch('applications/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @RequiresPlan(SubscriptionPlan.BASIC)
   async updateApplicationStatus(@Request() req: any, @Param('id') id: string, @Body('status') status: string) {
     if (req.user.role !== 'ADMIN') {
       throw new ForbiddenException('Admin only');
@@ -74,7 +82,8 @@ export class HiringController {
   }
 
   @Post('applications/:id/schedule-interview')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @RequiresPlan(SubscriptionPlan.BASIC)
   async scheduleInterview(
     @Request() req: any,
     @Param('id') id: string,

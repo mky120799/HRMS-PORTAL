@@ -15,7 +15,7 @@ async function main() {
       name: 'Acme Corporation',
       slug: 'acme-corp',
       subscriptionStatus: 'ACTIVE',
-      subscriptionPlan: 'PRO',
+      subscriptionPlan: 'BUSINESS', // Was 'PRO' — updated to match SubscriptionPlan enum
     },
   });
 

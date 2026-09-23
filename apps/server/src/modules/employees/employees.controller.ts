@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Request, UsePipes, NotFoundException } from '@nestjs/common';
 import { EmployeesService } from './employees.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { EmployeeLimitGuard } from '../../common/guards/employee-limit.guard';
 import { createEmployeeSchema } from './dto/create-employee.dto';
 import type { CreateEmployeeDto } from './dto/create-employee.dto';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -16,6 +17,7 @@ export class EmployeesController {
   }
 
   @Post()
+  @UseGuards(EmployeeLimitGuard)
   @UsePipes(new ZodValidationPipe(createEmployeeSchema))
   async create(@Request() req: any, @Body() dto: CreateEmployeeDto) {
     return this.employeesService.create(req.user.tenantId, dto);

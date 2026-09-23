@@ -3,9 +3,13 @@ import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { RequiresPlan } from '../../common/decorators/plan.decorator';
+import { SubscriptionPlan } from '../../common/subscription/subscription-plans';
 
 @Controller('analytics')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, SubscriptionGuard)
+@RequiresPlan(SubscriptionPlan.BUSINESS)
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 

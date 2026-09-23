@@ -25,6 +25,8 @@ import { GdprModule } from './modules/compliance/gdpr.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { IpWhitelistGuard } from './common/guards/ip-whitelist.guard';
+import { SubscriptionGuard } from './common/guards/subscription.guard';
+import { EmployeeLimitGuard } from './common/guards/employee-limit.guard';
 
 @Module({
   imports: [
@@ -74,6 +76,9 @@ import { IpWhitelistGuard } from './common/guards/ip-whitelist.guard';
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     // Apply consistent response shape globally
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
+    // Make subscription guards injectable across all feature modules
+    SubscriptionGuard,
+    EmployeeLimitGuard,
   ],
 })
 export class AppModule {}

@@ -7,6 +7,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Subscription Enums ────────────────────────────────────────────────────────
+
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  BUSINESS
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
 model Tenant {
   id        String   @id @default(uuid())
   name      String
@@ -16,8 +32,9 @@ model Tenant {
   updatedAt DateTime @updatedAt
   stripeCustomerId     String?  @unique
   stripeSubscriptionId String?  @unique
-  subscriptionStatus   String   @default("TRIAL") // TRIAL, ACTIVE, PAST_DUE, CANCELED
-  subscriptionPlan     String?  // e.g., 'BASIC', 'PRO'
+  subscriptionStatus   SubscriptionStatus @default(TRIAL)
+  subscriptionPlan     SubscriptionPlan   @default(FREE)
+  trialEndsAt          DateTime?          // When the 1-month free trial expires
 
   users         User[]
   employees     Employee[]

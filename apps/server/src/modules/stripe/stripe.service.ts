@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { getPlanFromPriceId } from '../../common/subscription/subscription-plans';
 import Stripe from 'stripe';
 
 @Injectable()
@@ -93,14 +94,21 @@ export class StripeService {
         if (session.mode === 'subscription') {
           const tenantId = session.client_reference_id;
           if (tenantId) {
+            // Fetch line items to determine which plan was purchased
+            const lineItems = await this.stripe.checkout.sessions.listLineItems(session.id, { limit: 1 });
+            const priceId = lineItems.data[0]?.price?.id ?? '';
+            const plan = getPlanFromPriceId(priceId, process.env);
+
             await this.prisma.tenant.update({
               where: { id: tenantId },
               data: {
                 stripeSubscriptionId: session.subscription as string,
                 subscriptionStatus: 'ACTIVE',
+                subscriptionPlan: plan,
+                trialEndsAt: null, // Trial converted to paid — clear the trial date
               },
             });
-            this.logger.log(`Tenant ${tenantId} activated subscription`);
+            this.logger.log(`Tenant ${tenantId} activated ${plan} subscription`);
           }
         }
         break;
@@ -108,12 +116,17 @@ export class StripeService {
       
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
+        const priceId = subscription.items.data[0]?.price?.id ?? '';
+        const plan = getPlanFromPriceId(priceId, process.env);
+
         await this.prisma.tenant.updateMany({
           where: { stripeSubscriptionId: subscription.id },
           data: {
+            subscriptionPlan: plan,
             subscriptionStatus: subscription.status === 'active' ? 'ACTIVE' : subscription.status === 'past_due' ? 'PAST_DUE' : 'TRIAL',
           },
         });
+        this.logger.log(`Subscription ${subscription.id} updated to plan: ${plan}, status: ${subscription.status}`);
         break;
       }
 

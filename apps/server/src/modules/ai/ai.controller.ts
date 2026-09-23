@@ -2,10 +2,14 @@ import { Controller, Post, Body, UseGuards, Request, UseInterceptors, UploadedFi
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AiService } from './ai.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { RequiresPlan } from '../../common/decorators/plan.decorator';
+import { SubscriptionPlan } from '../../common/subscription/subscription-plans';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Controller('ai')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, SubscriptionGuard)
+@RequiresPlan(SubscriptionPlan.ENTERPRISE)
 export class AiController {
   constructor(
     private readonly aiService: AiService,

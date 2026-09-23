@@ -4,6 +4,9 @@ import { DocumentsService } from './documents.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { RequiresPlan } from '../../common/decorators/plan.decorator';
+import { SubscriptionPlan } from '../../common/subscription/subscription-plans';
 import { diskStorage } from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
@@ -17,7 +20,8 @@ const storage = diskStorage({
 });
 
 @Controller('documents')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, SubscriptionGuard)
+@RequiresPlan(SubscriptionPlan.BASIC)
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
