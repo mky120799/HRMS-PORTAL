@@ -36,14 +36,15 @@ export function LoginPage() {
   const onSubmit = async (values: FormData) => {
     try {
       const res = await api.post('/auth/login', values);
+      const data = res.data?.data ?? res.data;
       
-      if (res.data.twoFactorRequired) {
+      if (data.twoFactorRequired) {
         setIsTwoFactorPending(true);
-        setTempToken(res.data.tempToken);
+        setTempToken(data.tempToken);
         return;
       }
       
-      setAuth(res.data);
+      setAuth(data);
       showToast('Welcome back');
       nav('/');
     } catch (error: unknown) {
@@ -63,7 +64,7 @@ export function LoginPage() {
         tempToken,
         code: totpCode,
       });
-      setAuth(res.data);
+      setAuth(res.data?.data ?? res.data);
       showToast('Welcome back');
       nav('/');
     } catch (error: unknown) {

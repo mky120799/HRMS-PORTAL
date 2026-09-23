@@ -67,7 +67,7 @@ export function OnboardingPage() {
     nav('/');
   };
 
-  const firstName = auth?.user.name?.split(' ')[0] ?? 'there';
+  const firstName = auth?.user?.name?.split(' ')[0] ?? 'there';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-4">

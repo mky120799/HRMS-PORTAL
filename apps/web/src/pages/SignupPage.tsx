@@ -32,7 +32,7 @@ export function SignupPage() {
   const onSubmit = async (values: FormData) => {
     try {
       const res = await api.post('/auth/signup', values);
-      setAuth(res.data);
+      setAuth(res.data?.data ?? res.data);
       showToast('Welcome! Your workspace is ready 🎉');
       nav('/onboarding');
     } catch (error: unknown) {
