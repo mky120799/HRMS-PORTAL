@@ -23,6 +23,7 @@ import { Button } from "./ui/button";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { cn } from "../lib/utils";
 import { AiChatWidget } from "./AiChatWidget";
+import { DemoBanner } from "./DemoBanner";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const nav = useNavigate();
@@ -284,7 +285,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-[260px] p-8">
+      <main className="flex-1 ml-[260px]">
+        <DemoBanner />
+        <div className="p-8">
         <header className="flex items-center justify-between mb-8 pb-4 border-b border-border/40">
           <div className="flex items-center gap-4">
             <Avatar className="h-10 w-10 font-semibold bg-primary text-primary-foreground">
@@ -315,6 +318,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </header>
 
         <section className="animate-fade-in">{children}</section>
+        </div>
       </main>
 
       {/* Global AI Chat Widget */}

@@ -33,8 +33,8 @@ export function SignupPage() {
     try {
       const res = await api.post('/auth/signup', values);
       setAuth(res.data);
-      showToast('Account created successfully');
-      nav('/');
+      showToast('Welcome! Your workspace is ready 🎉');
+      nav('/onboarding');
     } catch (error: unknown) {
       showToast(getErrorMessage(error), 'error');
     }

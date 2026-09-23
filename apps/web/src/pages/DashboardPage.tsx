@@ -27,13 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
 
-const data = [
-  { name: 'Mon', count: 4 },
-  { name: 'Tue', count: 7 },
-  { name: 'Wed', count: 5 },
-  { name: 'Thu', count: 12 },
-  { name: 'Fri', count: 9 },
-];
+
 
 export function DashboardPage() {
   const { showToast } = useToast();
@@ -42,7 +36,12 @@ export function DashboardPage() {
   const employees = useQuery({ queryKey: ['employees'], queryFn: async () => (await api.get('/employees')).data });
   const leaves = useQuery({ queryKey: ['leave'], queryFn: async () => (await api.get('/leave-requests')).data });
   const attendance = useQuery({ queryKey: ['attendance'], queryFn: async () => (await api.get('/attendance/me')).data });
+  const analytics = useQuery({ queryKey: ['analytics'], queryFn: async () => {
+    const res = await api.get('/analytics/overview');
+    return res.data?.data ?? res.data;
+  }});
   
+  const hiringData = analytics.data?.hiringFunnel ?? [];
   const todayRecord = attendance.data?.find((r: any) => new Date(r.date).toDateString() === new Date().toDateString());
 
   const handleClockIn = async () => {
@@ -123,7 +122,7 @@ export function DashboardPage() {
           <CardContent>
             <div className="h-[300px] w-full mt-4">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data}>
+                <AreaChart data={hiringData.map((d: any) => ({ name: d.stage, count: d.count }))}>
                   <defs>
                     <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>

@@ -149,6 +149,57 @@ export class AuthService {
     return result;
   }
 
+  /**
+   * signupWithTenant — PLG self-serve flow.
+   * Creates a new Tenant + Admin user in one call, then returns full auth tokens.
+   * This is what POST /auth/signup calls.
+   */
+  async signupWithTenant(tenantName: string, name: string, email: string, password: string) {
+    // Derive a URL-safe slug from the company name
+    const baseSlug = tenantName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+    const uniqueSlug = `${baseSlug}-${crypto.randomBytes(3).toString('hex')}`;
+
+    // Check email not already used across any tenant with this slug
+    const existingTenant = await this.prisma.tenant.findUnique({ where: { slug: uniqueSlug } });
+    if (existingTenant) throw new ConflictException('A workspace with this name already exists. Please try a different name.');
+
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 30);
+
+    // Create tenant
+    const tenant = await this.prisma.tenant.create({
+      data: {
+        name: tenantName,
+        slug: uniqueSlug,
+        subscriptionStatus: 'TRIAL',
+        subscriptionPlan: 'FREE',
+        trialEndsAt,
+      },
+    });
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await this.prisma.user.create({
+      data: { tenantId: tenant.id, email, passwordHash, name, role: 'ADMIN' },
+    });
+
+    // Create the admin's employee profile too
+    await this.prisma.employee.create({
+      data: { tenantId: tenant.id, email, firstName: name.split(' ')[0], lastName: name.split(' ').slice(1).join(' ') || '', department: 'Management', userId: user.id },
+    });
+
+    const { passwordHash: _, refreshToken: __, ...safeUser } = user;
+    const tokens = this.generateTokens(safeUser);
+    await this.saveRefreshToken(user.id, tokens.refreshToken);
+
+    return {
+      ...tokens,
+      tokenType: 'Bearer',
+      expiresIn: '15m',
+      user: safeUser,
+      isNewTenant: true,
+    };
+  }
+
   async getUserProfile(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('User not found');

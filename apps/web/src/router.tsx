@@ -22,6 +22,7 @@ import { BillingPage } from './pages/BillingPage';
 import { SuperAdminPage } from './pages/SuperAdminPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
+import { OnboardingPage } from './pages/OnboardingPage';
 
 function Protected() {
   if (!getAuth()) return <Navigate to="/login" replace />;
@@ -42,6 +43,7 @@ export function AppRouter() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/careers" element={<CareersPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />

@@ -44,6 +44,25 @@ export class AuthController {
     return user;
   }
 
+  /**
+   * POST /auth/signup — PLG self-serve signup.
+   * Creates a brand-new tenant + admin user in one call.
+   * The frontend then redirects to /onboarding where the user can seed demo data.
+   */
+  @Post('signup')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async signup(
+    @Body('tenantName') tenantName: string,
+    @Body('name') name: string,
+    @Body('email') email: string,
+    @Body('password') password: string,
+  ) {
+    if (!tenantName || !name || !email || !password) {
+      throw new UnauthorizedException('All fields are required');
+    }
+    return this.authService.signupWithTenant(tenantName, name, email, password);
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async getProfile(@Request() req: any) {

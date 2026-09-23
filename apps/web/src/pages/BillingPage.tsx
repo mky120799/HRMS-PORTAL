@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { getAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { CreditCard, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
+import { CreditCard, CheckCircle2, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
 import { api } from '../lib/api';
 
 export function BillingPage() {
@@ -12,12 +13,14 @@ export function BillingPage() {
   const auth = getAuth();
   const [loading, setLoading] = useState(false);
 
-  // In a real app, this would be fetched from /api/v1/tenants/me
-  // We'll mock it for the UI demonstration
-  const [tenantInfo] = useState({
-    subscriptionStatus: 'TRIAL', // TRIAL, ACTIVE, PAST_DUE, CANCELED
-    planName: 'Enterprise Beta',
+  const { data: sub, isLoading: subLoading } = useQuery({
+    queryKey: ['subscription'],
+    queryFn: async () => (await api.get('/tenants/subscription')).data?.data ?? (await api.get('/tenants/subscription')).data,
   });
+
+  const plan = sub?.plan ?? 'FREE';
+  const status = sub?.status ?? 'TRIAL';
+  const trialDaysRemaining = sub?.trialDaysRemaining ?? 0;
 
   const handleCheckout = async () => {
     setLoading(true);
@@ -54,28 +57,35 @@ export function BillingPage() {
   return (
     <div className="space-y-8 max-w-4xl mx-auto py-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Billing & Subscription</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Billing &amp; Subscription</h1>
         <p className="text-muted-foreground mt-1">
           Manage your workspace subscription, view invoices, and update payment methods.
         </p>
       </div>
 
+      {subLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="animate-spin text-muted-foreground" size={28} />
+        </div>
+      ) : (
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="border-border/50">
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
               Current Plan
-              {tenantInfo.subscriptionStatus === 'ACTIVE' && (
+              {status === 'ACTIVE' && (
                 <Badge className="bg-emerald-500 hover:bg-emerald-600">Active</Badge>
               )}
-              {tenantInfo.subscriptionStatus === 'TRIAL' && (
+              {status === 'TRIAL' && (
                 <Badge variant="secondary" className="bg-amber-100 text-amber-800">Trial</Badge>
               )}
-              {tenantInfo.subscriptionStatus === 'PAST_DUE' && (
+              {status === 'PAST_DUE' && (
                 <Badge variant="destructive">Past Due</Badge>
               )}
             </CardTitle>
-            <CardDescription>Your organization is on the {tenantInfo.planName} plan.</CardDescription>
+            <CardDescription>
+              Your organization is on the <strong>{plan.charAt(0) + plan.slice(1).toLowerCase()}</strong> plan.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -89,22 +99,22 @@ export function BillingPage() {
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={16} className="text-emerald-500" />
-                <span className="text-sm">Slack & Google Integrations</span>
+                <span className="text-sm">Slack &amp; Google Integrations</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={16} className="text-emerald-500" />
                 <span className="text-sm">Advanced Payroll Exports</span>
               </div>
             </div>
-            
-            {tenantInfo.subscriptionStatus === 'TRIAL' && (
+
+            {status === 'TRIAL' && (
               <div className="bg-amber-50 text-amber-800 text-sm p-3 rounded-md flex items-start gap-2 border border-amber-200">
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                <p>Your trial expires in 14 days. Upgrade now to avoid interruption.</p>
+                <p>Your trial expires in {trialDaysRemaining} days. Upgrade now to avoid interruption.</p>
               </div>
             )}
-            
-            {tenantInfo.subscriptionStatus === 'PAST_DUE' && (
+
+            {status === 'PAST_DUE' && (
               <div className="bg-red-50 text-red-800 text-sm p-3 rounded-md flex items-start gap-2 border border-red-200">
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 <p>Your last payment failed. Please update your payment method.</p>
@@ -112,7 +122,7 @@ export function BillingPage() {
             )}
           </CardContent>
           <CardFooter className="bg-slate-50/50 border-t pt-4">
-            {tenantInfo.subscriptionStatus !== 'ACTIVE' ? (
+            {status !== 'ACTIVE' ? (
               <Button onClick={handleCheckout} disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700">
                 <CreditCard size={16} className="mr-2" />
                 {loading ? 'Processing...' : 'Upgrade Now'}
@@ -132,7 +142,7 @@ export function BillingPage() {
             <CardDescription>Securely managed by Stripe</CardDescription>
           </CardHeader>
           <CardContent>
-            {tenantInfo.subscriptionStatus === 'ACTIVE' ? (
+            {status === 'ACTIVE' ? (
               <div className="flex items-center gap-3 p-3 border rounded-lg bg-slate-50">
                 <div className="bg-white p-2 rounded shadow-sm">
                   <CreditCard className="text-slate-500" size={20} />
@@ -151,6 +161,7 @@ export function BillingPage() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }
