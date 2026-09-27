@@ -18,7 +18,12 @@ export function getAuth(): AuthState | null {
   const raw = localStorage.getItem(KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as AuthState;
+    const parsed = JSON.parse(raw);
+    // Auto-unwrap if it was accidentally saved as { success: true, data: { ... } }
+    if (parsed && typeof parsed === 'object' && 'data' in parsed && parsed.success === true) {
+      return parsed.data as AuthState;
+    }
+    return parsed as AuthState;
   } catch {
     return null;
   }

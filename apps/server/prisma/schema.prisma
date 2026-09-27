@@ -7,7 +7,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ── Subscription Enums ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Conventions
+// - Every business table carries `tenantId` and is indexed on it. Services must
+//   always filter by the tenantId taken from the verified access token.
+// - Money is stored as DECIMAL(12,2) — never floating point.
+// - Status/role columns are strings validated at the API boundary (see
+//   src/common/constants/domain.ts); the allowed values are listed inline.
+// ─────────────────────────────────────────────────────────────────────────────
 
 enum SubscriptionPlan {
   FREE
@@ -24,87 +31,144 @@ enum SubscriptionStatus {
 }
 
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  whitelistedIps           String[] @default([])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  stripeCustomerId     String?  @unique
-  stripeSubscriptionId String?  @unique
-  subscriptionStatus   SubscriptionStatus @default(TRIAL)
-  subscriptionPlan     SubscriptionPlan   @default(FREE)
-  trialEndsAt          DateTime?          // When the 1-month free trial expires
+  id                    String             @id @default(uuid())
+  name                  String
+  slug                  String             @unique
+  timezone              String             @default("UTC") // IANA zone, drives attendance "today" and payroll periods
+  isActive              Boolean            @default(true) // false = suspended by platform operator
+  whitelistedIps        String[]           @default([]) // IPv4 addresses or CIDR ranges; empty = allow all
+  slackWebhookUrlEnc    String? // AES-256-GCM encrypted (see CryptoService)
+  slackHiringWebhookEnc String?
+  demoSeededAt          DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  stripeCustomerId      String?            @unique
+  stripeSubscriptionId  String?            @unique
+  subscriptionStatus    SubscriptionStatus @default(TRIAL)
+  subscriptionPlan      SubscriptionPlan   @default(FREE)
+  trialEndsAt           DateTime?
 
-  users         User[]
-  employees     Employee[]
-  jobs          Job[]
-  leaves        LeaveRequest[]
-  notifications Notification[]
-  attendance    AttendanceRecord[]
-  salaryStructures SalaryStructure[]
-  payslips      Payslip[]
-  documents     Document[]
+  users              User[]
+  employees          Employee[]
+  jobs               Job[]
+  applications       Application[]
+  leaves             LeaveRequest[]
+  leavePolicies      LeavePolicy[]
+  holidays           Holiday[]
+  notifications      Notification[]
+  attendance         AttendanceRecord[]
+  salaryStructures   SalaryStructure[]
+  payslips           Payslip[]
+  documents          Document[]
   performanceReviews PerformanceReview[]
 }
 
 model User {
-  id           String    @id @default(uuid())
-  tenantId     String
-  email        String
-  passwordHash String
-  name         String
-  role         String    @default("ADMIN") // ADMIN, MANAGER, EMPLOYEE
-  refreshToken String?   // Hashed refresh token for session management
-  refreshTokenExpiry DateTime? // When the refresh token expires
-  twoFactorSecret    String?   // TOTP secret key
-  isTwoFactorEnabled Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  tenantId            String
+  email               String // always stored lower-case
+  passwordHash        String // empty string for SSO-only users (can never match bcrypt)
+  name                String
+  role                String    @default("EMPLOYEE") // SUPER_ADMIN, ADMIN, MANAGER, EMPLOYEE
+  isActive            Boolean   @default(true)
+  tokenVersion        Int       @default(0) // bump to revoke every outstanding refresh/invite/reset token
+  refreshToken        String? // bcrypt hash of the current refresh token (one session per user)
+  refreshTokenExpiry  DateTime?
+  twoFactorSecret     String? // AES-256-GCM encrypted TOTP secret
+  isTwoFactorEnabled  Boolean   @default(false)
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   employee Employee?
 
   @@unique([tenantId, email])
   @@index([tenantId])
+  @@index([email])
 }
 
 model Employee {
-  id         String   @id @default(uuid())
-  tenantId   String
-  userId     String?  @unique
-  email      String
-  firstName  String
-  lastName   String
-  department String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String    @id @default(uuid())
+  tenantId       String
+  userId         String?   @unique
+  employeeCode   String?
+  email          String
+  firstName      String
+  lastName       String
+  phone          String?
+  department     String?
+  designation    String?
+  managerId      String?
+  employmentType String    @default("FULL_TIME") // FULL_TIME, PART_TIME, CONTRACT, INTERN
+  status         String    @default("ACTIVE") // ACTIVE, ON_NOTICE, EXITED
+  dateOfJoining  DateTime? @db.Date
+  exitDate       DateTime? @db.Date
+  anonymizedAt   DateTime? // set when PII is erased (data-protection request)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  tenant Tenant         @relation(fields: [tenantId], references: [id])
-  user   User?          @relation(fields: [userId], references: [id])
-  leaves LeaveRequest[]
-  attendance AttendanceRecord[]
-  salaryStructure SalaryStructure?
-  payslips Payslip[]
-  documents Document[]
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
+  user               User?               @relation(fields: [userId], references: [id])
+  manager            Employee?           @relation("Reports", fields: [managerId], references: [id])
+  reports            Employee[]          @relation("Reports")
+  leaves             LeaveRequest[]
+  attendance         AttendanceRecord[]
+  salaryStructure    SalaryStructure?
+  payslips           Payslip[]
+  documents          Document[]
   performanceReviews PerformanceReview[] @relation("EmployeeReviews")
   managerReviews     PerformanceReview[] @relation("ManagerReviews")
 
   @@unique([tenantId, email])
+  @@unique([tenantId, employeeCode])
   @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([managerId])
+}
+
+model LeavePolicy {
+  id          String   @id @default(uuid())
+  tenantId    String
+  type        String // ANNUAL, SICK, CASUAL, UNPAID, ...
+  annualQuota Int // working days per calendar year; ignored when isPaid = false
+  isPaid      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, type])
+}
+
+model Holiday {
+  id       String   @id @default(uuid())
+  tenantId String
+  date     DateTime @db.Date
+  name     String
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, date])
 }
 
 model LeaveRequest {
-  id         String   @id @default(uuid())
-  tenantId   String
-  employeeId String
-  type       String // SICK, ANNUAL, CASUAL
-  startDate  DateTime
-  endDate    DateTime
-  reason     String?
-  status     String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String    @id @default(uuid())
+  tenantId     String
+  employeeId   String
+  type         String
+  startDate    DateTime
+  endDate      DateTime
+  days         Int       @default(0) // working days (excludes weekends and tenant holidays)
+  reason       String?
+  status       String    @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
+  reviewedById String? // User id of the approver
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   employee Employee @relation(fields: [employeeId], references: [id])
@@ -120,6 +184,7 @@ model Job {
   title       String
   description String
   department  String
+  location    String?
   status      String   @default("OPEN") // OPEN, CLOSED
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -128,69 +193,87 @@ model Job {
   applications Application[]
 
   @@index([tenantId])
+  @@index([tenantId, status])
 }
 
 model Application {
-  id             String   @id @default(uuid())
-  jobId          String
-  candidateName  String
-  candidateEmail String
-  resumeUrl      String?
-  resumeFilename String?
-  aiScore        Int?     // Match percentage (0-100)
-  aiReason       String?  // Gemini's one-line explanation of the score
-  status         String   @default("PENDING") // PENDING, INTERVIEW, HIRED, REJECTED
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String    @id @default(uuid())
+  tenantId         String
+  jobId            String
+  candidateName    String
+  candidateEmail   String
+  resumeUrl        String? // legacy, unused
+  resumeFilename   String? // original filename, display only
+  resumeKey        String? // object-storage key (private)
+  resumeMimeType   String?
+  aiScore          Int? // advisory match score 0-100, never used to auto-reject
+  aiReason         String?
+  aiScoredAt       DateTime?
+  status           String    @default("APPLIED") // APPLIED, SCREENING, INTERVIEW, OFFERED, HIRED, REJECTED
+  interviewAt      DateTime?
+  interviewerEmail String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  job Job @relation(fields: [jobId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  job    Job    @relation(fields: [jobId], references: [id])
 
+  @@unique([jobId, candidateEmail])
   @@index([jobId])
+  @@index([tenantId, status])
 }
 
 model Notification {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   tenantId        String
-  channel         String // EMAIL, SMS, WHATSAPP
+  channel         String // EMAIL, IN_APP
   title           String
-  body            String
-  status          String   @default("PENDING") // PENDING, SENT, FAILED
+  body            String // credential-bearing emails are stored redacted
+  status          String    @default("PENDING") // PENDING, QUEUED, SENT, FAILED, READ
   recipientUserId String?
   recipientEmail  String?
   subject         String?
   metadata        Json?
-  createdAt       DateTime @default(now())
+  error           String?
+  sentAt          DateTime?
+  createdAt       DateTime  @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, createdAt])
+  @@index([tenantId, recipientUserId])
 }
 
 model AttendanceRecord {
-  id         String   @id @default(uuid())
-  tenantId   String
-  employeeId String
-  date       DateTime @db.Date
-  clockIn    DateTime
-  clockOut   DateTime?
-  status     String   @default("PRESENT") // PRESENT, HALF_DAY, ABSENT
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String    @id @default(uuid())
+  tenantId    String
+  employeeId  String
+  date        DateTime  @db.Date // calendar date in the tenant's timezone
+  clockIn     DateTime
+  clockOut    DateTime?
+  workMinutes Int?
+  status      String    @default("PRESENT") // PRESENT, HALF_DAY, ABSENT
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   employee Employee @relation(fields: [employeeId], references: [id])
 
   @@unique([employeeId, date])
   @@index([tenantId])
+  @@index([tenantId, date])
 }
 
+/// All amounts are MONTHLY.
 model SalaryStructure {
   id         String   @id @default(uuid())
   tenantId   String
   employeeId String   @unique
-  baseSalary Float
-  allowances Float    @default(0)
-  deductions Float    @default(0)
+  baseSalary Decimal  @db.Decimal(12, 2) // monthly basic
+  allowances Decimal  @default(0) @db.Decimal(12, 2) // monthly fixed allowances
+  deductions Decimal  @default(0) @db.Decimal(12, 2) // other fixed monthly deductions
+  monthlyTds Decimal  @default(0) @db.Decimal(12, 2) // income-tax withholding from the employee's tax projection
+  pfEnabled  Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -201,37 +284,45 @@ model SalaryStructure {
 }
 
 model Payslip {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   tenantId     String
   employeeId   String
-  month        Int      // 1 to 12
+  month        Int // 1-12
   year         Int
-  basicPay     Float
-  allowances   Float
-  deductions   Float
-  netPay       Float
-  pdfUrl       String?
-  status       String   @default("GENERATED") // GENERATED, PAID
-  createdAt    DateTime @default(now())
+  payableDays  Decimal   @default(0) @db.Decimal(5, 1)
+  lopDays      Decimal   @default(0) @db.Decimal(5, 1)
+  basicPay     Decimal   @db.Decimal(12, 2)
+  allowances   Decimal   @db.Decimal(12, 2)
+  grossPay     Decimal   @default(0) @db.Decimal(12, 2)
+  pfDeduction  Decimal   @default(0) @db.Decimal(12, 2)
+  tdsDeduction Decimal   @default(0) @db.Decimal(12, 2)
+  deductions   Decimal   @db.Decimal(12, 2) // total of all deductions
+  netPay       Decimal   @db.Decimal(12, 2)
+  status       String    @default("DRAFT") // DRAFT, FINALIZED
+  finalizedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   employee Employee @relation(fields: [employeeId], references: [id])
 
   @@unique([employeeId, month, year])
   @@index([tenantId])
+  @@index([tenantId, year, month])
 }
 
 model AuditLog {
   id         String   @id @default(uuid())
   tenantId   String
-  userId     String?  // Who performed the action
-  action     String   // CREATE, UPDATE, DELETE, LOGIN, etc.
-  resource   String   // employees, leaves, payroll, etc.
-  resourceId String?  // ID of the affected record
-  oldValues  Json?    // Before state
-  newValues  Json?    // After state
+  userId     String?
+  action     String // CREATE, UPDATE, DELETE, LOGIN, EXPORT, ...
+  resource   String
+  resourceId String?
+  oldValues  Json?
+  newValues  Json?
   ipAddress  String?
   userAgent  String?
+  requestId  String?
   createdAt  DateTime @default(now())
 
   @@index([tenantId, createdAt])
@@ -240,39 +331,56 @@ model AuditLog {
 }
 
 model Document {
-  id         String   @id @default(uuid())
-  tenantId   String
-  employeeId String
-  title      String
-  type       String   @default("OTHER") // ID, CONTRACT, POLICY, OTHER
-  fileUrl    String
-  expiryDate DateTime?
-  createdAt  DateTime @default(now())
+  id           String    @id @default(uuid())
+  tenantId     String
+  employeeId   String
+  title        String
+  type         String    @default("OTHER") // ID, CONTRACT, POLICY, CERTIFICATE, OTHER
+  fileUrl      String? // legacy, unused
+  storageKey   String? // private object-storage key
+  mimeType     String?
+  sizeBytes    Int?
+  uploadedById String?
+  expiryDate   DateTime?
+  createdAt    DateTime  @default(now())
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   employee Employee @relation(fields: [employeeId], references: [id])
 
   @@index([tenantId])
   @@index([tenantId, employeeId])
+  @@index([tenantId, expiryDate])
 }
 
 model PerformanceReview {
-  id           String   @id @default(uuid())
-  tenantId     String
-  employeeId   String
-  reviewerId   String?  // Manager who reviews
-  cycleName    String   // e.g., "Q1 2026", "Annual 2026"
-  selfRating   Int?     // 1 to 5
-  managerRating Int?    // 1 to 5
-  comments     String?
-  status       String   @default("DRAFT") // DRAFT, SELF_SUBMITTED, COMPLETED
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String    @id @default(uuid())
+  tenantId        String
+  employeeId      String
+  reviewerId      String? // Employee id of the manager who reviews
+  cycleName       String
+  selfRating      Int? // 1-5
+  managerRating   Int? // 1-5
+  selfComments    String?   @map("comments")
+  managerComments String?
+  status          String    @default("DRAFT") // DRAFT, SELF_SUBMITTED, COMPLETED
+  submittedAt     DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  employee Employee @relation("EmployeeReviews", fields: [employeeId], references: [id])
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  employee Employee  @relation("EmployeeReviews", fields: [employeeId], references: [id])
   reviewer Employee? @relation("ManagerReviews", fields: [reviewerId], references: [id])
 
+  @@unique([tenantId, employeeId, cycleName])
   @@index([tenantId])
   @@index([tenantId, employeeId])
+  @@index([reviewerId])
+}
+
+/// Processed Stripe webhook events — makes webhook handling idempotent.
+model StripeEvent {
+  id          String   @id // Stripe event id (evt_...)
+  type        String
+  processedAt DateTime @default(now())
 }

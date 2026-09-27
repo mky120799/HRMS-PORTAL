@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Sparkles, FileText, Users, BarChart3, Briefcase, CheckCircle2,
-  ArrowRight, Loader2,
+  ArrowRight, Loader2, AlertTriangle, LogIn,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
-import { getAuth } from '../lib/auth';
+import { getAuth, clearAuth } from '../lib/auth';
 
 const SEEDING_STEPS = [
   'Creating 20 employees across 5 departments…',
@@ -29,31 +29,58 @@ const SAMPLE_FEATURES = [
 
 export function OnboardingPage() {
   const nav = useNavigate();
-  const auth = getAuth();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const [tokenError, setTokenError] = useState(false);
+
+  useEffect(() => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      nav('/login', { replace: true });
+      return;
+    }
+    api.get('/auth/me').catch((err) => {
+      if (err?.response?.status === 401) {
+        setTokenError(true);
+      }
+    });
+  }, [nav]);
+
+  const handleReLogin = () => {
+    clearAuth();
+    nav('/login', { replace: true });
+  };
 
   const startWithSampleData = async () => {
+    const auth = getAuth();
+    if (!auth?.accessToken) {
+      showToast('Session expired. Please sign in again.', 'error');
+      clearAuth();
+      nav('/login', { replace: true });
+      return;
+    }
+
     setLoading(true);
     setStepIndex(0);
 
-    // Cycle through fake progress steps while the API runs
     const stepInterval = setInterval(() => {
       setStepIndex((prev) => (prev < SEEDING_STEPS.length - 1 ? prev + 1 : prev));
     }, 600);
 
     try {
       await api.post('/tenants/seed-demo');
-      // Signal to Layout that demo banner should be shown
       sessionStorage.setItem('hrms_demo_mode', 'true');
       showToast('Your Business Edition workspace is ready! 🎉', 'success');
       nav('/');
     } catch (err: any) {
-      // 409 = already seeded, still go to dashboard
       if (err?.response?.status === 409) {
+        sessionStorage.setItem('hrms_demo_mode', 'true');
         showToast('Workspace already has data — taking you there now!', 'success');
         nav('/');
+      } else if (err?.response?.status === 401) {
+        setTokenError(true);
+        setLoading(false);
       } else {
         showToast(getErrorMessage(err), 'error');
         setLoading(false);
@@ -67,18 +94,42 @@ export function OnboardingPage() {
     nav('/');
   };
 
+  const auth = getAuth();
   const firstName = auth?.user?.name?.split(' ')[0] ?? 'there';
+
+  if (tokenError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-4">
+        <div className="w-full max-w-md text-center">
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-10 backdrop-blur-xl">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-500/20 rounded-2xl mb-6">
+              <AlertTriangle size={32} className="text-amber-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Session Expired</h2>
+            <p className="text-slate-400 text-sm mb-8">
+              Your session has expired. Please sign in again to continue setting up your workspace.
+            </p>
+            <button
+              onClick={handleReLogin}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white font-semibold px-6 py-3 rounded-xl transition-all"
+            >
+              <LogIn size={16} />
+              Sign In Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-4">
-      {/* Background blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
       </div>
 
       <div className="w-full max-w-3xl relative z-10">
-        {/* Header */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 px-4 py-1.5 rounded-full text-sm font-medium mb-6">
             <CheckCircle2 size={14} />
@@ -92,9 +143,7 @@ export function OnboardingPage() {
           </p>
         </div>
 
-        {/* Choice Cards */}
         {loading ? (
-          /* Loading State */
           <div className="bg-white/5 border border-white/10 rounded-2xl p-10 text-center backdrop-blur-xl">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-500/20 rounded-2xl mb-6">
               <Loader2 size={32} className="text-indigo-400 animate-spin" />
@@ -116,18 +165,15 @@ export function OnboardingPage() {
           </div>
         ) : (
           <div className="grid md:grid-cols-2 gap-5">
-            {/* Card 1: Sample Data (Recommended) */}
             <button
               onClick={startWithSampleData}
               className="group relative bg-white/5 hover:bg-indigo-500/10 border border-white/10 hover:border-indigo-500/40 rounded-2xl p-7 text-left transition-all duration-300 backdrop-blur-xl hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-0.5"
             >
-              {/* Recommended badge */}
               <div className="absolute -top-3 left-5">
                 <span className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-xs font-bold px-3 py-1 rounded-full">
                   ✨ Recommended
                 </span>
               </div>
-
               <div className="flex items-center gap-3 mb-5 mt-2">
                 <div className="p-3 bg-indigo-500/20 rounded-xl group-hover:bg-indigo-500/30 transition-colors">
                   <Sparkles size={24} className="text-indigo-400" />
@@ -137,7 +183,6 @@ export function OnboardingPage() {
                   <p className="text-slate-400 text-sm">See everything in action instantly</p>
                 </div>
               </div>
-
               <ul className="space-y-3 mb-6">
                 {SAMPLE_FEATURES.map(({ icon: Icon, label, desc }) => (
                   <li key={label} className="flex items-start gap-3">
@@ -151,14 +196,12 @@ export function OnboardingPage() {
                   </li>
                 ))}
               </ul>
-
               <div className="flex items-center gap-2 text-indigo-400 text-sm font-semibold group-hover:gap-3 transition-all">
                 <span>Get started</span>
                 <ArrowRight size={16} />
               </div>
             </button>
 
-            {/* Card 2: Start Fresh */}
             <button
               onClick={startFresh}
               className="group bg-white/5 hover:bg-white/8 border border-white/10 hover:border-white/20 rounded-2xl p-7 text-left transition-all duration-300 backdrop-blur-xl hover:shadow-lg hover:-translate-y-0.5 flex flex-col"
@@ -172,7 +215,6 @@ export function OnboardingPage() {
                   <p className="text-slate-400 text-sm">Empty workspace, your data only</p>
                 </div>
               </div>
-
               <ul className="space-y-3 mb-6 flex-1">
                 {[
                   'Clean slate — no sample data',
@@ -186,7 +228,6 @@ export function OnboardingPage() {
                   </li>
                 ))}
               </ul>
-
               <div className="flex items-center gap-2 text-slate-400 text-sm font-semibold group-hover:gap-3 transition-all">
                 <span>Take me to the dashboard</span>
                 <ArrowRight size={16} />
