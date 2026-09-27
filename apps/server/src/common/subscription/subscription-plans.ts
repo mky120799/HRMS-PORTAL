@@ -1,26 +1,12 @@
 /**
- * Subscription plan definitions, hierarchy, and feature limits.
- * Single source of truth — used by guards, services, and stripe webhook handler.
+ * Subscription plan definitions, hierarchy, limits and the access policy.
+ * Single source of truth — used by guards, the billing module and the Stripe webhook.
  */
+import { SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 
-export enum SubscriptionPlan {
-  FREE = 'FREE',
-  BASIC = 'BASIC',
-  BUSINESS = 'BUSINESS',
-  ENTERPRISE = 'ENTERPRISE',
-}
+export { SubscriptionPlan, SubscriptionStatus };
 
-export enum SubscriptionStatus {
-  TRIAL = 'TRIAL',
-  ACTIVE = 'ACTIVE',
-  PAST_DUE = 'PAST_DUE',
-  CANCELED = 'CANCELED',
-}
-
-/**
- * Hierarchy order — higher index = higher tier.
- * Used to check if a tenant's plan meets the required minimum.
- */
+/** Higher index = higher tier. */
 export const PLAN_ORDER: SubscriptionPlan[] = [
   SubscriptionPlan.FREE,
   SubscriptionPlan.BASIC,
@@ -28,43 +14,62 @@ export const PLAN_ORDER: SubscriptionPlan[] = [
   SubscriptionPlan.ENTERPRISE,
 ];
 
-/**
- * Returns true if the tenant's plan meets or exceeds the required plan.
- * Example: planMeetsRequirement('BUSINESS', 'BASIC') → true
- */
-export function planMeetsRequirement(
-  tenantPlan: string,
-  requiredPlan: SubscriptionPlan,
-): boolean {
-  const tenantIndex = PLAN_ORDER.indexOf(tenantPlan as SubscriptionPlan);
-  const requiredIndex = PLAN_ORDER.indexOf(requiredPlan);
-  return tenantIndex >= requiredIndex;
+export const PAID_PLANS = [SubscriptionPlan.BASIC, SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE] as const;
+export type PaidPlan = (typeof PAID_PLANS)[number];
+
+export function planMeetsRequirement(tenantPlan: SubscriptionPlan, requiredPlan: SubscriptionPlan): boolean {
+  const tenantIndex = PLAN_ORDER.indexOf(tenantPlan);
+  return tenantIndex >= 0 && tenantIndex >= PLAN_ORDER.indexOf(requiredPlan);
+}
+
+export const PLAN_EMPLOYEE_LIMITS: Record<SubscriptionPlan, number> = {
+  FREE: 10,
+  BASIC: 50,
+  BUSINESS: 250,
+  ENTERPRISE: Infinity,
+};
+
+/** Employee cap while a trial is running — generous, but not unbounded. */
+export const TRIAL_EMPLOYEE_LIMIT = 250;
+
+export interface SubscriptionState {
+  subscriptionPlan: SubscriptionPlan;
+  subscriptionStatus: SubscriptionStatus;
+  trialEndsAt: Date | null;
+}
+
+export function isTrialActive(t: SubscriptionState, now = new Date()): boolean {
+  return t.subscriptionStatus === 'TRIAL' && !!t.trialEndsAt && now < t.trialEndsAt;
 }
 
 /**
- * Maximum number of employees allowed per plan.
- * FREE = 10, BASIC = 50, BUSINESS = 250, ENTERPRISE = unlimited (Infinity).
+ * The plan whose features the tenant can use right now:
+ * - active trial            → ENTERPRISE (full product preview)
+ * - ACTIVE / PAST_DUE       → the purchased plan (PAST_DUE is Stripe's dunning grace period)
+ * - expired trial / CANCELED → FREE
  */
-export const PLAN_EMPLOYEE_LIMITS: Record<SubscriptionPlan, number> = {
-  [SubscriptionPlan.FREE]: 10,
-  [SubscriptionPlan.BASIC]: 50,
-  [SubscriptionPlan.BUSINESS]: 250,
-  [SubscriptionPlan.ENTERPRISE]: Infinity,
-};
+export function effectivePlan(t: SubscriptionState, now = new Date()): SubscriptionPlan {
+  if (isTrialActive(t, now)) return SubscriptionPlan.ENTERPRISE;
+  if (t.subscriptionStatus === 'ACTIVE' || t.subscriptionStatus === 'PAST_DUE') return t.subscriptionPlan;
+  return SubscriptionPlan.FREE;
+}
 
-/**
- * Maps Stripe Price IDs (from env) to SubscriptionPlan.
- * Set the corresponding env vars in your .env file:
- *   STRIPE_PRICE_BASIC=price_xxxxx
- *   STRIPE_PRICE_BUSINESS=price_xxxxx
- *   STRIPE_PRICE_ENTERPRISE=price_xxxxx
- */
-export function getPlanFromPriceId(
-  priceId: string,
-  env: NodeJS.ProcessEnv,
-): SubscriptionPlan {
-  if (priceId === env.STRIPE_PRICE_ENTERPRISE) return SubscriptionPlan.ENTERPRISE;
-  if (priceId === env.STRIPE_PRICE_BUSINESS) return SubscriptionPlan.BUSINESS;
-  if (priceId === env.STRIPE_PRICE_BASIC) return SubscriptionPlan.BASIC;
-  return SubscriptionPlan.FREE; // Fallback
+export function employeeLimit(t: SubscriptionState, now = new Date()): number {
+  if (isTrialActive(t, now)) return TRIAL_EMPLOYEE_LIMIT;
+  return PLAN_EMPLOYEE_LIMITS[effectivePlan(t, now)];
+}
+
+/** Maps a Stripe subscription status onto ours. */
+export function mapStripeStatus(status: string): SubscriptionStatus {
+  switch (status) {
+    case 'active':
+    case 'trialing':
+      return SubscriptionStatus.ACTIVE;
+    case 'past_due':
+    case 'unpaid':
+    case 'incomplete':
+      return SubscriptionStatus.PAST_DUE;
+    default: // canceled, incomplete_expired, paused
+      return SubscriptionStatus.CANCELED;
+  }
 }

@@ -1,160 +1,185 @@
-import { Controller, Post, Body, Get, UsePipes, UnauthorizedException, Request, UseGuards, ConflictException, Res, BadRequestException } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import type { Response } from 'express';
-import { AuthService } from './auth.service';
-import { TwoFactorAuthService } from './two-factor.service';
-import { loginSchema } from './dto/login.dto';
-import type { LoginDto } from './dto/login.dto';
-import { registerSchema } from './dto/register.dto';
-import type { RegisterDto } from './dto/register.dto';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { inviteSchema, resetRequestSchema, setPasswordSchema } from './dto/auth.dto';
-import type { InviteDto, ResetRequestDto, SetPasswordDto } from './dto/auth.dto';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import { AuthService, RequestMeta } from './auth.service';
+import { GoogleAuthGuard } from './google-auth.guard';
+import type { GoogleIdentity } from './strategies/google.strategy';
+import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { EmployeeLimitGuard } from '../../common/guards/employee-limit.guard';
+import {
+  changePasswordSchema,
+  inviteSchema,
+  loginSchema,
+  refreshSchema,
+  resetRequestSchema,
+  setPasswordSchema,
+  signupSchema,
+  ssoExchangeSchema,
+  twoFactorCodeSchema,
+  twoFactorLoginSchema,
+  type ChangePasswordDto,
+  type InviteDto,
+  type LoginDto,
+  type ResetRequestDto,
+  type SetPasswordDto,
+  type SignupDto,
+} from './dto/auth.dto';
 
+const meta = (req: FastifyRequest): RequestMeta => ({ ip: req.ip, userAgent: req.headers['user-agent'] });
+const STRICT = { default: { limit: 10, ttl: 60_000 } };
+
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(
-    private readonly authService: AuthService,
-    private readonly twoFactorAuthService: TwoFactorAuthService
+    private readonly auth: AuthService,
+    private readonly config: ConfigService,
   ) {}
 
-  @Post('login')
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 attempts per minute
-  @UsePipes(new ZodValidationPipe(loginSchema))
-  async login(@Body() loginDto: LoginDto) {
-    const user = await this.authService.validateUser(loginDto.tenantId, loginDto.email, loginDto.password);
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-    return this.authService.login(user);
-  }
-
-  @Post('register')
-  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 registrations per minute
-  @UsePipes(new ZodValidationPipe(registerSchema))
-  async register(@Body() registerDto: RegisterDto) {
-    const user = await this.authService.registerUser(registerDto);
-    if (!user) {
-        throw new ConflictException('User already exists for this tenant');
-    }
-    return user;
-  }
-
-  /**
-   * POST /auth/signup — PLG self-serve signup.
-   * Creates a brand-new tenant + admin user in one call.
-   * The frontend then redirects to /onboarding where the user can seed demo data.
-   */
+  @Public()
   @Post('signup')
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async signup(
-    @Body('tenantName') tenantName: string,
-    @Body('name') name: string,
-    @Body('email') email: string,
-    @Body('password') password: string,
-  ) {
-    if (!tenantName || !name || !email || !password) {
-      throw new UnauthorizedException('All fields are required');
-    }
-    return this.authService.signupWithTenant(tenantName, name, email, password);
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  signup(@Body(new ZodValidationPipe(signupSchema)) dto: SignupDto, @Req() req: FastifyRequest) {
+    return this.auth.signup(dto, meta(req));
   }
 
-  @Get('me')
-  @UseGuards(JwtAuthGuard)
-  async getProfile(@Request() req: any) {
-    return this.authService.getUserProfile(req.user.userId);
+  @Public()
+  @Post('login')
+  @HttpCode(200)
+  @Throttle(STRICT)
+  login(@Body(new ZodValidationPipe(loginSchema)) dto: LoginDto, @Req() req: FastifyRequest) {
+    return this.auth.login(dto, meta(req));
   }
 
-  @Post('invite')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
-  @UsePipes(new ZodValidationPipe(inviteSchema))
-  async inviteEmployee(@Request() req: any, @Body() dto: InviteDto) {
-    return this.authService.inviteEmployee(req.user.tenantId, dto.email, dto.name);
-  }
-
-  @Post('reset-password-request')
-  @UsePipes(new ZodValidationPipe(resetRequestSchema))
-  async requestReset(@Body() dto: ResetRequestDto) {
-    return this.authService.resetPasswordRequest(dto.tenantId, dto.email);
-  }
-
-  @Post('accept-invite')
-  @UsePipes(new ZodValidationPipe(setPasswordSchema))
-  async acceptInvite(@Body() dto: SetPasswordDto) {
-    return this.authService.setPasswordWithToken(dto.token, dto.password, 'INVITE');
-  }
-
-  @Post('reset-password')
-  @UsePipes(new ZodValidationPipe(setPasswordSchema))
-  async resetPassword(@Body() dto: SetPasswordDto) {
-    return this.authService.setPasswordWithToken(dto.token, dto.password, 'RESET');
-  }
-
-  @Post('refresh')
-  async refresh(@Body('refreshToken') refreshToken: string) {
-    if (!refreshToken) throw new UnauthorizedException('Refresh token required');
-    return this.authService.refreshTokens(refreshToken);
-  }
-
-  @Post('logout')
-  @UseGuards(JwtAuthGuard)
-  async logout(@Request() req: any) {
-    return this.authService.logout(req.user.sub);
-  }
-
-  // ─── 2FA / TOTP ───────────────────────────────────────────────────────────────
-
-  @Post('2fa/generate')
-  @UseGuards(JwtAuthGuard)
-  async generateTwoFactorAuth(@Request() req: any) {
-    const user = await this.authService.getUserProfile(req.user.sub);
-    const { otpauthUrl } = await this.twoFactorAuthService.generateTwoFactorAuthenticationSecret(user);
-    return {
-      qrCodeUrl: await this.twoFactorAuthService.generateQrCodeDataURL(otpauthUrl),
-    };
-  }
-
-  @Post('2fa/turn-on')
-  @UseGuards(JwtAuthGuard)
-  async turnOnTwoFactorAuth(@Request() req: any, @Body('code') code: string) {
-    const user = await this.authService.getUserProfile(req.user.sub);
-    const isValid = await this.twoFactorAuthService.isTwoFactorAuthenticationCodeValid(code, user);
-    if (!isValid) {
-      throw new UnauthorizedException('Invalid 2FA code');
-    }
-    await this.twoFactorAuthService.turnOnTwoFactorAuthentication(user.id);
-    return { message: '2FA successfully enabled' };
-  }
-
+  @Public()
   @Post('2fa/authenticate')
-  async authenticateTwoFactor(@Body('tempToken') tempToken: string, @Body('code') code: string) {
-    if (!tempToken || !code) {
-      throw new BadRequestException('tempToken and code are required');
-    }
-    return this.authService.finalizeTwoFactorLogin(tempToken, code, this.twoFactorAuthService);
+  @HttpCode(200)
+  @Throttle(STRICT)
+  authenticateTwoFactor(@Body(new ZodValidationPipe(twoFactorLoginSchema)) dto: { tempToken: string; code: string }, @Req() req: FastifyRequest) {
+    return this.auth.completeTwoFactorLogin(dto.tempToken, dto.code, meta(req));
   }
 
-  // ─── Google SSO ───────────────────────────────────────────────────────────────
+  @Public()
+  @Post('refresh')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  refresh(@Body(new ZodValidationPipe(refreshSchema)) dto: { refreshToken: string }) {
+    return this.auth.refresh(dto.refreshToken);
+  }
 
+  @ApiBearerAuth()
+  @Post('logout')
+  @HttpCode(200)
+  logout(@CurrentUser() user: AuthUser) {
+    return this.auth.logout(user.userId);
+  }
+
+  @ApiBearerAuth()
+  @Get('me')
+  me(@CurrentUser() user: AuthUser) {
+    return this.auth.me(user.userId);
+  }
+
+  @ApiBearerAuth()
+  @Post('change-password')
+  @HttpCode(200)
+  @Throttle(STRICT)
+  changePassword(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(changePasswordSchema)) dto: ChangePasswordDto) {
+    return this.auth.changePassword(user, dto);
+  }
+
+  // ─── Invitations & password reset ──────────────────────────────────────────
+
+  @ApiBearerAuth()
+  @Post('invite')
+  @Roles('ADMIN')
+  @UseGuards(EmployeeLimitGuard)
+  invite(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(inviteSchema)) dto: InviteDto) {
+    return this.auth.invite(user, dto);
+  }
+
+  @Public()
+  @Post('accept-invite')
+  @HttpCode(200)
+  @Throttle(STRICT)
+  acceptInvite(@Body(new ZodValidationPipe(setPasswordSchema)) dto: SetPasswordDto) {
+    return this.auth.setPasswordWithToken('invite', dto.token, dto.password);
+  }
+
+  @Public()
+  @Post('reset-password-request')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  requestReset(@Body(new ZodValidationPipe(resetRequestSchema)) dto: ResetRequestDto) {
+    return this.auth.requestPasswordReset(dto);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(200)
+  @Throttle(STRICT)
+  resetPassword(@Body(new ZodValidationPipe(setPasswordSchema)) dto: SetPasswordDto) {
+    return this.auth.setPasswordWithToken('reset', dto.token, dto.password);
+  }
+
+  // ─── 2FA management ────────────────────────────────────────────────────────
+
+  @ApiBearerAuth()
+  @Post('2fa/generate')
+  generateTwoFactor(@CurrentUser() user: AuthUser) {
+    return this.auth.beginTwoFactor(user.userId);
+  }
+
+  @ApiBearerAuth()
+  @Post('2fa/turn-on')
+  @HttpCode(200)
+  @Throttle(STRICT)
+  enableTwoFactor(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(twoFactorCodeSchema)) dto: { code: string }) {
+    return this.auth.enableTwoFactor(user.userId, dto.code);
+  }
+
+  @ApiBearerAuth()
+  @Post('2fa/turn-off')
+  @HttpCode(200)
+  @Throttle(STRICT)
+  disableTwoFactor(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(twoFactorCodeSchema)) dto: { code: string }) {
+    return this.auth.disableTwoFactor(user.userId, dto.code);
+  }
+
+  // ─── Google SSO ────────────────────────────────────────────────────────────
+
+  /** GET /auth/google?tenant=<workspace-slug> */
+  @Public()
   @Get('google')
-  @UseGuards(AuthGuard('google'))
-  async googleAuth() {
-    // Initiates Google OAuth redirect — handled by PassportStrategy
+  @UseGuards(GoogleAuthGuard)
+  googleAuth() {
+    // Passport redirects to Google.
   }
 
+  @Public()
   @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
-  async googleCallback(@Request() req: any, @Res() res: Response) {
-    const authData = await this.authService.login(req.user);
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    // Redirect to frontend with tokens as query params
-    res.redirect(
-      `${frontendUrl}/auth/callback?accessToken=${authData.accessToken}&refreshToken=${authData.refreshToken}`
-    );
+  @UseGuards(GoogleAuthGuard)
+  async googleCallback(@Req() req: FastifyRequest & { user?: GoogleIdentity | null }, @Query('state') state: string, @Res() reply: FastifyReply) {
+    const frontend = this.config.get<string>('FRONTEND_URL');
+    try {
+      if (!req.user) throw new Error('google_failed');
+      const tenant = this.auth.readSsoState(state);
+      const code = await this.auth.ssoLogin(tenant, req.user.email);
+      return reply.redirect(`${frontend}/auth/callback?code=${encodeURIComponent(code)}`, 302);
+    } catch {
+      return reply.redirect(`${frontend}/login?error=sso_failed`, 302);
+    }
+  }
+
+  @Public()
+  @Post('sso/exchange')
+  @HttpCode(200)
+  @Throttle(STRICT)
+  exchangeSso(@Body(new ZodValidationPipe(ssoExchangeSchema)) dto: { code: string }, @Req() req: FastifyRequest) {
+    return this.auth.exchangeSsoCode(dto.code, meta(req));
   }
 }

@@ -1,282 +1,419 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
-import type { RegisterDto } from './dto/register.dto';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import * as crypto from 'crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
+import type { Tenant, User } from '@prisma/client';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { TokenService } from '../../common/auth/token.service';
+import { AuditService } from '../../common/audit/audit.service';
+import { EmailService } from '../../common/email/email.service';
+import { EmailTemplates } from '../../common/email/templates';
+import { DEFAULT_LEAVE_POLICIES, type Role } from '../../common/constants/domain';
+import type { AuthUser } from '../../common/auth/auth-user';
+import { TwoFactorAuthService } from './two-factor.service';
+import type { ChangePasswordDto, InviteDto, LoginDto, ResetRequestDto, SignupDto } from './dto/auth.dto';
+
+const BCRYPT_ROUNDS = 12;
+const MAX_FAILED_LOGINS = 5;
+const LOCKOUT_MINUTES = 15;
+const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const TRIAL_DAYS = 30;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface RequestMeta {
+  ip?: string;
+  userAgent?: string;
+}
+
+/** Refresh tokens are high-entropy JWTs, so a fast SHA-256 digest is the right storage hash
+ *  (bcrypt would silently truncate them at 72 bytes — the shared JWT header — and match any token). */
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+
+export function slugify(name: string): string {
+  const base = name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return `${base || 'workspace'}-${randomBytes(3).toString('hex')}`;
+}
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+  /** Compared against when the user does not exist, so response time does not reveal valid emails. */
+  private readonly dummyHash = bcrypt.hashSync(randomUUID(), BCRYPT_ROUNDS);
+  private readonly frontendUrl: string;
+
   constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
-    @InjectQueue('notifications') private readonly notificationsQueue: Queue,
-  ) {}
+    private readonly prisma: PrismaService,
+    private readonly tokens: TokenService,
+    private readonly audit: AuditService,
+    private readonly email: EmailService,
+    private readonly twoFactor: TwoFactorAuthService,
+    config: ConfigService,
+  ) {
+    this.frontendUrl = config.get('FRONTEND_URL', 'http://localhost:5173');
+  }
 
-  // ─── Core Auth ───────────────────────────────────────────────────────────────
+  // ─── Tenant resolution ──────────────────────────────────────────────────────
 
-  async validateUser(tenantId: string, email: string, pass: string): Promise<any> {
-    const user = await this.prisma.user.findUnique({
-      where: { tenantId_email: { tenantId, email } },
-    });
-    if (user && await bcrypt.compare(pass, user.passwordHash)) {
-      const { passwordHash, refreshToken, ...result } = user;
-      return result;
+  async resolveTenant(ref: string): Promise<Tenant | null> {
+    const value = ref.trim();
+    if (UUID_RE.test(value)) {
+      const byId = await this.prisma.tenant.findUnique({ where: { id: value } });
+      if (byId) return byId;
     }
-    return null;
+    return this.prisma.tenant.findUnique({ where: { slug: value.toLowerCase() } });
   }
 
-  private generateTokens(user: any) {
-    const payload = { email: user.email, sub: user.id, tenantId: user.tenantId, role: user.role };
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
-    const refreshToken = this.jwtService.sign({ sub: user.id }, { expiresIn: '7d' });
-    return { accessToken, refreshToken };
-  }
+  // ─── Sign-up ────────────────────────────────────────────────────────────────
 
-  private async saveRefreshToken(userId: string, refreshToken: string) {
-    const hashed = await bcrypt.hash(refreshToken, 10);
-    const expiry = new Date();
-    expiry.setDate(expiry.getDate() + 7);
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { refreshToken: hashed, refreshTokenExpiry: expiry },
+  /** Self-serve sign-up: tenant, default leave policies, admin user and their employee profile — atomically. */
+  async signup(dto: SignupDto, meta: RequestMeta) {
+    const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const [firstName, ...rest] = dto.name.split(/\s+/);
+
+    const { tenant, user } = await this.prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: { name: dto.tenantName, slug: slugify(dto.tenantName), subscriptionStatus: 'TRIAL', subscriptionPlan: 'FREE', trialEndsAt },
+      });
+      await tx.leavePolicy.createMany({ data: DEFAULT_LEAVE_POLICIES.map((p) => ({ ...p, tenantId: tenant.id })) });
+      const user = await tx.user.create({
+        data: { tenantId: tenant.id, email: dto.email, passwordHash, name: dto.name, role: 'ADMIN' },
+      });
+      await tx.employee.create({
+        data: {
+          tenantId: tenant.id,
+          userId: user.id,
+          email: dto.email,
+          firstName,
+          lastName: rest.join(' '),
+          department: 'Management',
+          designation: 'Administrator',
+          dateOfJoining: new Date(),
+        },
+      });
+      return { tenant, user };
     });
+
+    await this.audit.log({ tenantId: tenant.id, userId: user.id, action: 'SIGNUP', resource: 'tenants', resourceId: tenant.id, ipAddress: meta.ip, userAgent: meta.userAgent });
+    const session = await this.issueSession(user);
+    return { ...session, isNewTenant: true, tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name } };
   }
 
-  async login(user: any) {
+  // ─── Login ──────────────────────────────────────────────────────────────────
+
+  async login(dto: LoginDto, meta: RequestMeta) {
+    const tenant = await this.resolveTenant(dto.tenantId);
+    const user = tenant ? await this.prisma.user.findUnique({ where: { tenantId_email: { tenantId: tenant.id, email: dto.email } } }) : null;
+
+    if (!tenant || !user) {
+      await bcrypt.compare(dto.password, this.dummyHash);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new UnauthorizedException('Too many failed attempts. Try again in a few minutes or reset your password.');
+    }
+
+    const valid = user.passwordHash.length > 0 && (await bcrypt.compare(dto.password, user.passwordHash));
+    if (!valid) {
+      await this.recordFailedLogin(user, meta);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    // Checked only after the password so these states are not disclosed to guessers.
+    if (!user.isActive) throw new UnauthorizedException('This account has been deactivated');
+    if (!tenant.isActive) throw new ForbiddenException('This workspace is suspended. Contact support.');
+
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await this.prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
+    }
+
     if (user.isTwoFactorEnabled) {
-      // Return a temporary token
-      const payload = { sub: user.id, type: '2FA_PENDING', tenantId: user.tenantId };
-      const tempToken = this.jwtService.sign(payload, { expiresIn: '5m' });
-      return {
-        twoFactorRequired: true,
-        tempToken,
-      };
+      return { twoFactorRequired: true, tempToken: this.tokens.sign('two_factor', { sub: user.id, ver: user.tokenVersion }) };
     }
 
-    const { accessToken, refreshToken } = this.generateTokens(user);
-    await this.saveRefreshToken(user.id, refreshToken);
+    await this.audit.log({ tenantId: tenant.id, userId: user.id, action: 'LOGIN', resource: 'auth', ipAddress: meta.ip, userAgent: meta.userAgent });
+    return this.issueSession(user);
+  }
+
+  private async recordFailedLogin(user: User, meta: RequestMeta) {
+    const attempts = user.failedLoginAttempts + 1;
+    const lock = attempts >= MAX_FAILED_LOGINS;
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: lock ? 0 : attempts,
+        lockedUntil: lock ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : user.lockedUntil,
+      },
+    });
+    await this.audit.log({
+      tenantId: user.tenantId,
+      userId: user.id,
+      action: lock ? 'ACCOUNT_LOCKED' : 'LOGIN_FAILED',
+      resource: 'auth',
+      ipAddress: meta.ip,
+      userAgent: meta.userAgent,
+    });
+  }
+
+  async completeTwoFactorLogin(tempToken: string, code: string, meta: RequestMeta) {
+    const payload = this.tokens.verify<{ ver: number }>('two_factor', tempToken);
+    const user = await this.activeUserWithVersion(payload.sub, payload.ver);
+    if (!this.twoFactor.verifyCode(code, user.twoFactorSecret)) {
+      await this.recordFailedLogin(user, meta);
+      throw new UnauthorizedException('Invalid 2FA code');
+    }
+    await this.audit.log({ tenantId: user.tenantId, userId: user.id, action: 'LOGIN', resource: 'auth', ipAddress: meta.ip, userAgent: meta.userAgent, newValues: { method: '2fa' } });
+    return this.issueSession(user);
+  }
+
+  // ─── Sessions ───────────────────────────────────────────────────────────────
+
+  /**
+   * Issues a 15-minute access token and a 7-day refresh token. One active
+   * refresh token per user is stored (hashed); rotating it on every refresh
+   * means a stolen token stops working as soon as the real user refreshes.
+   */
+  async issueSession(user: User) {
+    const employee = await this.prisma.employee.findUnique({ where: { userId: user.id }, select: { id: true } });
+    const accessToken = this.tokens.sign('access', {
+      sub: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
+      email: user.email,
+      name: user.name,
+      employeeId: employee?.id ?? null,
+    });
+    const refreshToken = this.tokens.sign('refresh', { sub: user.id, ver: user.tokenVersion, jti: randomUUID() });
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: sha256(refreshToken), refreshTokenExpiry: new Date(Date.now() + REFRESH_TTL_MS), lastLoginAt: new Date() },
+    });
+
     return {
       accessToken,
       refreshToken,
       tokenType: 'Bearer',
-      expiresIn: '15m',
-      user,
+      expiresIn: 15 * 60,
+      user: { ...this.publicUser(user), employeeId: employee?.id ?? null },
     };
   }
 
-  async finalizeTwoFactorLogin(tempToken: string, code: string, twoFactorAuthService: any) {
-    let payload: any;
-    try {
-      payload = this.jwtService.verify(tempToken);
-    } catch {
-      throw new UnauthorizedException('Invalid or expired temporary token');
+  async refresh(refreshToken: string) {
+    const payload = this.tokens.verify<{ ver: number }>('refresh', refreshToken);
+    const user = await this.activeUserWithVersion(payload.sub, payload.ver);
+
+    const presented = Buffer.from(sha256(refreshToken));
+    const stored = Buffer.from(user.refreshToken ?? '');
+    const matches = stored.length === presented.length && timingSafeEqual(stored, presented);
+    if (!matches || !user.refreshTokenExpiry || user.refreshTokenExpiry < new Date()) {
+      if (!matches && user.refreshToken) {
+        // A validly-signed but already-rotated token was replayed: assume theft and end the session.
+        await this.prisma.user.update({ where: { id: user.id }, data: { refreshToken: null, refreshTokenExpiry: null } });
+        await this.audit.log({ tenantId: user.tenantId, userId: user.id, action: 'REFRESH_TOKEN_REUSE', resource: 'auth' });
+        this.logger.warn(`Refresh token reuse detected for user ${user.id}; session revoked`);
+      }
+      throw new UnauthorizedException('Session expired. Please sign in again.');
     }
-
-    if (payload.type !== '2FA_PENDING') {
-      throw new UnauthorizedException('Invalid token type');
-    }
-
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!user) throw new UnauthorizedException('User not found');
-
-    const isValid = await twoFactorAuthService.isTwoFactorAuthenticationCodeValid(code, user);
-    if (!isValid) throw new UnauthorizedException('Invalid 2FA code');
-
-    const { accessToken, refreshToken } = this.generateTokens(user);
-    await this.saveRefreshToken(user.id, refreshToken);
-    
-    const { passwordHash, refreshToken: _, ...safeUser } = user;
-
-    return {
-      accessToken,
-      refreshToken,
-      tokenType: 'Bearer',
-      expiresIn: '15m',
-      user: safeUser,
-    };
-  }
-
-  async refreshTokens(refreshToken: string) {
-    let payload: any;
-    try {
-      payload = this.jwtService.verify(refreshToken);
-    } catch {
-      throw new UnauthorizedException('Invalid or expired refresh token');
-    }
-
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!user || !user.refreshToken || !user.refreshTokenExpiry) {
-      throw new UnauthorizedException('Session not found');
-    }
-    if (new Date() > user.refreshTokenExpiry) {
-      throw new UnauthorizedException('Refresh token expired. Please log in again.');
-    }
-    const tokenMatches = await bcrypt.compare(refreshToken, user.refreshToken);
-    if (!tokenMatches) {
-      throw new UnauthorizedException('Refresh token mismatch');
-    }
-
-    const { passwordHash, refreshToken: _, ...safeUser } = user;
-    const tokens = this.generateTokens(safeUser);
-    await this.saveRefreshToken(user.id, tokens.refreshToken);
-    return { ...tokens, tokenType: 'Bearer', expiresIn: '15m' };
+    return this.issueSession(user);
   }
 
   async logout(userId: string) {
-    await this.prisma.user.update({
+    await this.prisma.user.update({ where: { id: userId }, data: { refreshToken: null, refreshTokenExpiry: null } });
+    return { message: 'Logged out' };
+  }
+
+  /** Loads a user for a stateful token and checks it has not been revoked by a version bump. */
+  private async activeUserWithVersion(userId: string, version: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { tenant: { select: { isActive: true } } } });
+    if (!user || !user.isActive || !user.tenant.isActive || user.tokenVersion !== version) {
+      throw new UnauthorizedException('Session is no longer valid. Please sign in again.');
+    }
+    return user;
+  }
+
+  // ─── Profile ────────────────────────────────────────────────────────────────
+
+  async me(userId: string) {
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      data: { refreshToken: null, refreshTokenExpiry: null },
-    });
-    return { message: 'Logged out successfully' };
-  }
-
-  // ─── Profile & Registration ───────────────────────────────────────────────────
-
-  async registerUser(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { tenantId_email: { tenantId: dto.tenantId, email: dto.email } },
-    });
-    if (existing) return null;
-
-    const passwordHash = await bcrypt.hash(dto.password, 12);
-    const user = await this.prisma.user.create({
-      data: { tenantId: dto.tenantId, email: dto.email, passwordHash, name: dto.name, role: 'ADMIN' },
-    });
-    const { passwordHash: _, refreshToken: __, ...result } = user;
-    return result;
-  }
-
-  /**
-   * signupWithTenant — PLG self-serve flow.
-   * Creates a new Tenant + Admin user in one call, then returns full auth tokens.
-   * This is what POST /auth/signup calls.
-   */
-  async signupWithTenant(tenantName: string, name: string, email: string, password: string) {
-    // Derive a URL-safe slug from the company name
-    const baseSlug = tenantName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-    const uniqueSlug = `${baseSlug}-${crypto.randomBytes(3).toString('hex')}`;
-
-    // Check email not already used across any tenant with this slug
-    const existingTenant = await this.prisma.tenant.findUnique({ where: { slug: uniqueSlug } });
-    if (existingTenant) throw new ConflictException('A workspace with this name already exists. Please try a different name.');
-
-    const trialEndsAt = new Date();
-    trialEndsAt.setDate(trialEndsAt.getDate() + 30);
-
-    // Create tenant
-    const tenant = await this.prisma.tenant.create({
-      data: {
-        name: tenantName,
-        slug: uniqueSlug,
-        subscriptionStatus: 'TRIAL',
-        subscriptionPlan: 'FREE',
-        trialEndsAt,
+      include: {
+        employee: { select: { id: true, firstName: true, lastName: true, department: true, designation: true, dateOfJoining: true, managerId: true } },
+        tenant: { select: { id: true, name: true, slug: true, timezone: true } },
       },
     });
+    if (!user) throw new UnauthorizedException();
+    return { ...this.publicUser(user), employee: user.employee, tenant: user.tenant };
+  }
 
-    const passwordHash = await bcrypt.hash(password, 12);
-    const user = await this.prisma.user.create({
-      data: { tenantId: tenant.id, email, passwordHash, name, role: 'ADMIN' },
-    });
-
-    // Create the admin's employee profile too
-    await this.prisma.employee.create({
-      data: { tenantId: tenant.id, email, firstName: name.split(' ')[0], lastName: name.split(' ').slice(1).join(' ') || '', department: 'Management', userId: user.id },
-    });
-
-    const { passwordHash: _, refreshToken: __, ...safeUser } = user;
-    const tokens = this.generateTokens(safeUser);
-    await this.saveRefreshToken(user.id, tokens.refreshToken);
-
+  private publicUser(user: User) {
     return {
-      ...tokens,
-      tokenType: 'Bearer',
-      expiresIn: '15m',
-      user: safeUser,
-      isNewTenant: true,
+      id: user.id,
+      tenantId: user.tenantId,
+      email: user.email,
+      name: user.name,
+      role: user.role as Role,
+      isTwoFactorEnabled: user.isTwoFactorEnabled,
     };
   }
 
-  async getUserProfile(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('User not found');
-    const { passwordHash, refreshToken, ...result } = user;
-    return result;
-  }
+  // ─── Invitations & passwords ────────────────────────────────────────────────
 
-  // ─── Invite & Password Reset ──────────────────────────────────────────────────
+  /**
+   * Admin invites a person. Links to an existing employee record with the same
+   * email, or creates one. The user cannot sign in until they accept the invite.
+   */
+  async invite(admin: AuthUser, dto: InviteDto) {
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: admin.tenantId } });
+    const existing = await this.prisma.user.findUnique({ where: { tenantId_email: { tenantId: tenant.id, email: dto.email } } });
+    if (existing) throw new ConflictException('A user with this email already exists in your workspace');
 
-  async inviteEmployee(tenantId: string, email: string, name: string) {
-    let user = await this.prisma.user.findUnique({
-      where: { tenantId_email: { tenantId, email } },
-    });
-    if (user) throw new ConflictException('User already exists in this tenant');
-
-    const randomPassword = crypto.randomBytes(16).toString('hex');
-    const passwordHash = await bcrypt.hash(randomPassword, 12);
-
-    user = await this.prisma.user.create({
-      data: { tenantId, email, name, passwordHash, role: 'EMPLOYEE' },
-    });
-
-    const inviteToken = this.jwtService.sign(
-      { sub: user.id, email: user.email, type: 'INVITE' },
-      { expiresIn: '7d' }
-    );
-
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    const inviteLink = `${frontendUrl}/accept-invite?token=${inviteToken}`;
-    await this.notificationsQueue.add('send-email', {
-      to: email,
-      subject: 'You are invited to HRMS',
-      body: `<h3>Welcome to HRMS!</h3><p>Hi ${name},</p><p>You have been invited. <a href="${inviteLink}">Activate Account</a></p>`,
-      tenantId,
-    });
-
-    return { message: 'Invitation sent' };
-  }
-
-  async resetPasswordRequest(tenantId: string, email: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { tenantId_email: { tenantId, email } },
-    });
-    if (!user) return { message: 'If an account exists, a reset link has been sent.' };
-
-    const resetToken = this.jwtService.sign(
-      { sub: user.id, email: user.email, type: 'RESET' },
-      { expiresIn: '1h' }
-    );
-
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
-    await this.notificationsQueue.add('send-email', {
-      to: email,
-      subject: 'Password Reset Request',
-      body: `<h3>Password Reset</h3><p>Hi ${user.name},</p><p><a href="${resetLink}">Reset Password</a></p>`,
-      tenantId,
-    });
-
-    return { message: 'If an account exists, a reset link has been sent.' };
-  }
-
-  async setPasswordWithToken(token: string, newPassword: string, requiredType: 'INVITE' | 'RESET') {
-    try {
-      const payload = this.jwtService.verify(token);
-      if (payload.type !== requiredType) throw new BadRequestException('Invalid token type');
-
-      const passwordHash = await bcrypt.hash(newPassword, 12);
-      await this.prisma.user.update({
-        where: { id: payload.sub },
-        data: { passwordHash },
+    const [firstName, ...rest] = dto.name.split(/\s+/);
+    const user = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: { tenantId: tenant.id, email: dto.email, name: dto.name, passwordHash: '', role: dto.role },
       });
-      return { message: 'Password updated successfully' };
-    } catch (error) {
-      if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('Invalid or expired token');
+      const employee = await tx.employee.findUnique({ where: { tenantId_email: { tenantId: tenant.id, email: dto.email } } });
+      if (employee) {
+        if (employee.userId) throw new ConflictException('This employee is already linked to a user');
+        await tx.employee.update({ where: { id: employee.id }, data: { userId: user.id } });
+      } else {
+        await tx.employee.create({ data: { tenantId: tenant.id, userId: user.id, email: dto.email, firstName, lastName: rest.join(' ') } });
+      }
+      return user;
+    });
+
+    await this.sendInvite(user, tenant.name);
+    await this.audit.log({ tenantId: tenant.id, userId: admin.userId, action: 'INVITE', resource: 'users', resourceId: user.id, newValues: { email: dto.email, role: dto.role } });
+    return { message: 'Invitation sent', userId: user.id };
+  }
+
+  async sendInvite(user: User, companyName: string) {
+    const token = this.tokens.sign('invite', { sub: user.id, ver: user.tokenVersion });
+    await this.email.send({
+      tenantId: user.tenantId,
+      to: user.email,
+      recipientUserId: user.id,
+      sensitive: true,
+      email: EmailTemplates.invite({ name: user.name, companyName, link: `${this.frontendUrl}/accept-invite?token=${encodeURIComponent(token)}` }),
+    });
+  }
+
+  /** Always returns the same response, so it cannot be used to discover which emails have accounts. */
+  async requestPasswordReset(dto: ResetRequestDto) {
+    const response = { message: 'If an account exists for that email, a reset link has been sent.' };
+    const tenant = await this.resolveTenant(dto.tenantId);
+    if (!tenant) return response;
+    const user = await this.prisma.user.findUnique({ where: { tenantId_email: { tenantId: tenant.id, email: dto.email } } });
+    if (!user || !user.isActive) return response;
+
+    const token = this.tokens.sign('reset', { sub: user.id, ver: user.tokenVersion });
+    await this.email.send({
+      tenantId: tenant.id,
+      to: user.email,
+      recipientUserId: user.id,
+      sensitive: true,
+      email: EmailTemplates.passwordReset({ name: user.name, link: `${this.frontendUrl}/reset-password?token=${encodeURIComponent(token)}` }),
+    });
+    return response;
+  }
+
+  /**
+   * Consumes an invite or reset token. Bumping tokenVersion makes the link
+   * single-use and signs out every existing session for the account.
+   */
+  async setPasswordWithToken(purpose: 'invite' | 'reset', token: string, newPassword: string) {
+    const payload = this.tokens.verify<{ ver: number }>(purpose, token);
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user || !user.isActive || user.tokenVersion !== payload.ver) {
+      throw new BadRequestException('This link is invalid or has already been used');
     }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS),
+        tokenVersion: { increment: 1 },
+        refreshToken: null,
+        refreshTokenExpiry: null,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+    });
+    await this.audit.log({ tenantId: user.tenantId, userId: user.id, action: purpose === 'invite' ? 'INVITE_ACCEPTED' : 'PASSWORD_RESET', resource: 'auth' });
+    return { message: 'Password set. You can now sign in.' };
+  }
+
+  async changePassword(auth: AuthUser, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: auth.userId } });
+    const valid = user.passwordHash.length > 0 && (await bcrypt.compare(dto.currentPassword, user.passwordHash));
+    if (!valid) throw new BadRequestException('Current password is incorrect');
+
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS), tokenVersion: { increment: 1 } },
+    });
+    await this.audit.log({ tenantId: user.tenantId, userId: user.id, action: 'PASSWORD_CHANGED', resource: 'auth' });
+    return this.issueSession(updated); // other devices are signed out; this one continues
+  }
+
+  // ─── Two-factor management ──────────────────────────────────────────────────
+
+  async beginTwoFactor(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    return this.twoFactor.beginEnrollment(user);
+  }
+
+  async enableTwoFactor(userId: string, code: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    await this.twoFactor.enable(user, code);
+    await this.audit.log({ tenantId: user.tenantId, userId, action: '2FA_ENABLED', resource: 'auth' });
+    return { message: 'Two-factor authentication enabled' };
+  }
+
+  async disableTwoFactor(userId: string, code: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    await this.twoFactor.disable(user, code);
+    await this.audit.log({ tenantId: user.tenantId, userId, action: '2FA_DISABLED', resource: 'auth' });
+    return { message: 'Two-factor authentication disabled' };
+  }
+
+  // ─── Google SSO ─────────────────────────────────────────────────────────────
+
+  /** OAuth `state` carries the workspace slug; signed so it cannot be tampered with in transit. */
+  createSsoState(tenantSlug: string) {
+    return this.tokens.sign('sso_state', { sub: 'sso', tenant: tenantSlug.toLowerCase() });
+  }
+
+  readSsoState(state: string | undefined): string {
+    if (!state) throw new UnauthorizedException('Missing SSO state');
+    return this.tokens.verify<{ tenant: string }>('sso_state', state).tenant;
+  }
+
+  /**
+   * SSO only signs in people who already have an account in the chosen
+   * workspace — it never auto-provisions users. Returns a 60-second one-time
+   * code; the SPA exchanges it for tokens, so tokens never appear in URLs.
+   */
+  async ssoLogin(tenantSlug: string, googleEmail: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+    const user = tenant ? await this.prisma.user.findUnique({ where: { tenantId_email: { tenantId: tenant.id, email: googleEmail.toLowerCase() } } }) : null;
+    if (!tenant || !tenant.isActive || !user || !user.isActive) {
+      throw new UnauthorizedException('No active account for this Google address in that workspace');
+    }
+    return this.tokens.sign('sso_exchange', { sub: user.id, ver: user.tokenVersion });
+  }
+
+  async exchangeSsoCode(code: string, meta: RequestMeta) {
+    const payload = this.tokens.verify<{ ver: number }>('sso_exchange', code);
+    const user = await this.activeUserWithVersion(payload.sub, payload.ver);
+    if (user.isTwoFactorEnabled) {
+      return { twoFactorRequired: true, tempToken: this.tokens.sign('two_factor', { sub: user.id, ver: user.tokenVersion }) };
+    }
+    await this.audit.log({ tenantId: user.tenantId, userId: user.id, action: 'LOGIN', resource: 'auth', ipAddress: meta.ip, userAgent: meta.userAgent, newValues: { method: 'google' } });
+    return this.issueSession(user);
   }
 }
-

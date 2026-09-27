@@ -1,84 +1,83 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { BullModule } from '@nestjs/bullmq';
-import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ThrottlerGuard } from '@nestjs/throttler';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { BullModule } from '@nestjs/bullmq';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { validateEnv, type Env } from './config/env';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { CommonModule } from './common/common.module';
 import { AuditModule } from './common/audit/audit.module';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { TenantAccessGuard } from './common/guards/tenant-access.guard';
+import { RolesGuard } from './common/guards/roles.guard';
+import { SubscriptionGuard } from './common/guards/subscription.guard';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { AuditInterceptor } from './common/audit/audit.interceptor';
+import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { LeavesModule } from './modules/leaves/leaves.module';
-import { HiringModule } from './modules/hiring/hiring.module';
-import { TenantsModule } from './modules/tenants/tenants.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { PerformanceModule } from './modules/performance/performance.module';
+import { HiringModule } from './modules/hiring/hiring.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
-import { StripeModule } from './modules/stripe/stripe.module';
+import { BillingModule } from './modules/stripe/stripe.module';
 import { GdprModule } from './modules/compliance/gdpr.module';
-import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
-import { TransformInterceptor } from './common/interceptors/transform.interceptor';
-import { IpWhitelistGuard } from './common/guards/ip-whitelist.guard';
-import { SubscriptionGuard } from './common/guards/subscription.guard';
-import { EmployeeLimitGuard } from './common/guards/employee-limit.guard';
+import { PlatformModule } from './modules/platform/platform.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    // Rate Limiting — 100 requests per 60 seconds by default, auth endpoints override to stricter limits
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000,
-        limit: 100,
-      },
-    ]),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv, cache: true }),
+    // Default: 100 requests/minute per client IP. Sensitive routes override with @Throttle().
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     BullModule.forRootAsync({
-      imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
+      useFactory: (config: ConfigService<Env, true>) => ({
         connection: {
-          host: configService.get('REDIS_HOST', 'localhost'),
-          port: configService.get('REDIS_PORT', 6379),
+          host: config.get('REDIS_HOST', { infer: true }),
+          port: config.get('REDIS_PORT', { infer: true }),
+          password: config.get('REDIS_PASSWORD', { infer: true }),
+          tls: config.get('REDIS_TLS', { infer: true }) ? {} : undefined,
         },
       }),
     }),
     PrismaModule,
+    CommonModule,
     AuditModule,
+    HealthModule,
     AuthModule,
+    TenantsModule,
     EmployeesModule,
     LeavesModule,
-    HiringModule,
-    TenantsModule,
-    NotificationsModule,
     AttendanceModule,
     PayrollModule,
     DocumentsModule,
     PerformanceModule,
+    HiringModule,
+    NotificationsModule,
     AiModule,
     AnalyticsModule,
-    StripeModule,
+    BillingModule,
     GdprModule,
+    PlatformModule,
   ],
-  controllers: [AppController],
   providers: [
-    AppService,
-    // Apply rate limiting globally
+    // Guard order matters — each guard relies on the previous one:
+    // rate limit → authenticate → tenant checks (suspension, IP allow-list) → role → plan
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    // Apply IP Whitelisting globally
-    { provide: APP_GUARD, useClass: IpWhitelistGuard },
-    // Apply request logging globally
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: TenantAccessGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: SubscriptionGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
-    // Apply consistent response shape globally
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
-    // Make subscription guards injectable across all feature modules
-    SubscriptionGuard,
-    EmployeeLimitGuard,
   ],
 })
 export class AppModule {}

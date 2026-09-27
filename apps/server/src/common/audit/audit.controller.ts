@@ -1,24 +1,26 @@
-import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
-import { AuditService } from './audit.service';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { RolesGuard } from '../guards/roles.guard';
-import { Roles } from '../decorators/roles.decorator';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
+import { AuditService } from './audit.service';
+import { CurrentUser, Roles } from '../auth/decorators';
+import type { AuthUser } from '../auth/auth-user';
+import { ZodValidationPipe } from '../pipes/zod-validation.pipe';
+import { paginationSchema } from '../validation/common.schemas';
+
+const querySchema = paginationSchema.extend({
+  resource: z.string().max(50).optional(),
+  userId: z.string().uuid().optional(),
+});
 
 @ApiTags('Audit')
 @ApiBearerAuth()
 @Controller('audit')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get()
   @Roles('ADMIN')
-  async getLogs(
-    @Request() req: any,
-    @Query('resource') resource?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.auditService.getLogs(req.user.tenantId, resource, limit ? parseInt(limit) : 100);
+  list(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(querySchema)) q: z.infer<typeof querySchema>) {
+    return this.auditService.list(user.tenantId, { resource: q.resource, userId: q.userId }, q);
   }
 }

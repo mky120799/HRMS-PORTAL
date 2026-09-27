@@ -1,62 +1,45 @@
-import { Controller, Get, Post, Body, Param, UseGuards, UsePipes, Req } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Req } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { FastifyRequest } from 'fastify';
 import { TenantsService } from './tenants.service';
 import { TenantDemoSeederService } from './tenant-demo-seeder.service';
-import { InternalAuthGuard } from '../../common/guards/internal-auth.guard';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { createTenantSchema } from './dto/create-tenant.dto';
-import type { CreateTenantDto } from './dto/create-tenant.dto';
+import { CurrentUser, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { updateSettingsSchema, type UpdateSettingsDto } from './dto/tenant.dto';
 
-// ── Internal endpoints (service-to-service) ───────────────────────────────────
-@Controller('internal/tenants')
-@UseGuards(InternalAuthGuard)
-export class TenantsController {
-  constructor(private readonly tenantsService: TenantsService) {}
-
-  @Post()
-  @UsePipes(new ZodValidationPipe(createTenantSchema))
-  async createTenant(@Body() dto: CreateTenantDto) {
-    return this.tenantsService.createTenant(dto);
-  }
-
-  @Get(':id')
-  async getTenantById(@Param('id') id: string) {
-    return this.tenantsService.getTenantById(id);
-  }
-
-  @Get('lookup/:identifier')
-  async lookupTenant(@Param('identifier') identifier: string) {
-    return this.tenantsService.lookupTenant(identifier);
-  }
-}
-
-// ── Authenticated endpoints (for logged-in users) ─────────────────────────────
+@ApiTags('Tenant')
+@ApiBearerAuth()
 @Controller('tenants')
-@UseGuards(JwtAuthGuard)
-export class TenantsSelfController {
+export class TenantsController {
   constructor(
-    private readonly tenantsService: TenantsService,
+    private readonly tenants: TenantsService,
     private readonly demoSeeder: TenantDemoSeederService,
   ) {}
 
-  /**
-   * GET /tenants/subscription
-   * Returns the current tenant's plan, status, trial expiry, and days remaining.
-   * Used by the frontend to show upgrade banners and gate UI sections.
-   */
+  /** Plan, trial and seat usage — drives upgrade banners and feature gating in the UI. */
   @Get('subscription')
-  async getSubscription(@Req() req: any) {
-    return this.tenantsService.getSubscriptionStatus(req.user.tenantId);
+  getSubscription(@CurrentUser() user: AuthUser) {
+    return this.tenants.getSubscriptionStatus(user.tenantId);
   }
 
-  /**
-   * POST /tenants/seed-demo
-   * Seeds the current tenant with Business Edition demo data.
-   * Idempotent — throws 409 if already seeded.
-   */
+  @Get('settings')
+  @Roles('ADMIN')
+  getSettings(@CurrentUser() user: AuthUser) {
+    return this.tenants.getSettings(user.tenantId);
+  }
+
+  @Patch('settings')
+  @Roles('ADMIN')
+  updateSettings(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(updateSettingsSchema)) dto: UpdateSettingsDto, @Req() req: FastifyRequest) {
+    return this.tenants.updateSettings(user, dto, req.ip);
+  }
+
+  /** Fills a brand-new workspace with sample data. Admin-only, once, and never changes billing. */
   @Post('seed-demo')
-  async seedDemo(@Req() req: any) {
-    await this.demoSeeder.seed(req.user.tenantId);
+  @Roles('ADMIN')
+  async seedDemo(@CurrentUser() user: AuthUser) {
+    await this.demoSeeder.seed(user.tenantId);
     return { seeded: true };
   }
 }

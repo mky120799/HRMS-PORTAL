@@ -1,60 +1,46 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { OTP } from 'otplib';
 import * as qrcode from 'qrcode';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CryptoService } from '../../common/crypto/crypto.service';
 
+/**
+ * TOTP (RFC 6238) second factor. The shared secret is encrypted at rest with
+ * AES-256-GCM so a database leak alone does not expose users' 2FA seeds.
+ */
 @Injectable()
 export class TwoFactorAuthService {
-  private otp = new OTP({ strategy: 'totp' });
+  private readonly otp = new OTP({ strategy: 'totp' });
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly crypto: CryptoService,
+  ) {}
 
-  public async generateTwoFactorAuthenticationSecret(user: any) {
+  /** Creates a new (not yet enabled) secret and returns a QR code for authenticator apps. */
+  async beginEnrollment(user: { id: string; email: string; isTwoFactorEnabled: boolean }) {
+    if (user.isTwoFactorEnabled) throw new BadRequestException('Two-factor authentication is already enabled');
     const secret = this.otp.generateSecret();
-    const appName = process.env.APP_NAME || 'HRMS Enterprise';
-    
-    // Create the otpauth:// URI
-    const otpauthUrl = this.otp.generateURI({
-      issuer: appName,
-      label: user.email,
-      secret: secret,
-    });
-
-    // Update user in DB with secret (but do not enable it yet)
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        twoFactorSecret: secret,
-      },
-    });
-
-    return {
-      secret,
-      otpauthUrl,
-    };
+    const otpauthUrl = this.otp.generateURI({ issuer: process.env.APP_NAME || 'HRMS', label: user.email, secret });
+    await this.prisma.user.update({ where: { id: user.id }, data: { twoFactorSecret: this.crypto.encrypt(secret) } });
+    return { qrCodeUrl: await qrcode.toDataURL(otpauthUrl) };
   }
 
-  public async generateQrCodeDataURL(otpAuthUrl: string) {
-    return qrcode.toDataURL(otpAuthUrl);
+  verifyCode(code: string, encryptedSecret: string | null): boolean {
+    if (!encryptedSecret) return false;
+    const secret = this.crypto.decrypt(encryptedSecret);
+    return this.otp.verifySync({ token: code, secret }).valid;
   }
 
-  public async isTwoFactorAuthenticationCodeValid(twoFactorAuthenticationCode: string, user: any) {
-    if (!user.twoFactorSecret) {
-      throw new BadRequestException('2FA is not configured for this user');
-    }
-    const result = this.otp.verifySync({
-      token: twoFactorAuthenticationCode,
-      secret: user.twoFactorSecret,
-    });
-    return result.valid;
+  async enable(user: { id: string; twoFactorSecret: string | null }, code: string) {
+    if (!user.twoFactorSecret) throw new BadRequestException('Start 2FA setup first');
+    if (!this.verifyCode(code, user.twoFactorSecret)) throw new BadRequestException('Invalid 2FA code');
+    await this.prisma.user.update({ where: { id: user.id }, data: { isTwoFactorEnabled: true } });
   }
 
-  public async turnOnTwoFactorAuthentication(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        isTwoFactorEnabled: true,
-      },
-    });
+  async disable(user: { id: string; twoFactorSecret: string | null; isTwoFactorEnabled: boolean }, code: string) {
+    if (!user.isTwoFactorEnabled) throw new BadRequestException('Two-factor authentication is not enabled');
+    if (!this.verifyCode(code, user.twoFactorSecret)) throw new BadRequestException('Invalid 2FA code');
+    await this.prisma.user.update({ where: { id: user.id }, data: { isTwoFactorEnabled: false, twoFactorSecret: null } });
   }
 }
