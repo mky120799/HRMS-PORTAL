@@ -33,7 +33,7 @@ import { PlatformModule } from './modules/platform/platform.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv, cache: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv, cache: true, envFilePath: ['.env', '../../.env'] }),
     // Default: 100 requests/minute per client IP. Sensitive routes override with @Throttle().
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     BullModule.forRootAsync({

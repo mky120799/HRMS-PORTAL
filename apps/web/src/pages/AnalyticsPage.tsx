@@ -31,7 +31,7 @@ export function AnalyticsPage() {
     queryFn: async () => (await api.get('/analytics/overview')).data,
   });
 
-  const analytics = data?.data ?? data;
+  const analytics = data;
 
   if (isLoading) {
     return (
@@ -59,7 +59,7 @@ export function AnalyticsPage() {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={Users}         label="Total Employees"   value={summary.totalEmployees ?? 0}   color="bg-indigo-500" />
-        <StatCard icon={CalendarCheck} label="Total Leave Requests" value={summary.totalLeaveRequests ?? 0} color="bg-emerald-500" />
+        <StatCard icon={CalendarCheck} label="Pending Leave"     value={summary.pendingLeaves ?? 0}      color="bg-emerald-500" />
         <StatCard icon={Briefcase}     label="Open Positions"    value={summary.openJobs ?? 0}          color="bg-purple-500" />
         <StatCard icon={TrendingUp}    label="Candidates Hired"  value={summary.hiredCount ?? 0}        color="bg-amber-500" />
       </div>

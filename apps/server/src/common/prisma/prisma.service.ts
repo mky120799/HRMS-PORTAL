@@ -4,7 +4,9 @@ import { PrismaClient } from '@prisma/client';
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
-    super({ log: ['warn', 'error'] });
+    // Errors surface as exceptions and are logged once by GlobalExceptionFilter; logging them here
+    // too would also log expected, handled conflicts (e.g. unique violations) as errors.
+    super({ log: ['warn'] });
   }
 
   async onModuleInit() {

@@ -1,11 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { LogIn, Building2, Mail, Lock } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, API_BASE_URL } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
-import { setAuth } from '../lib/auth';
+import { lastWorkspace, rememberWorkspace, setAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -14,30 +14,40 @@ import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
 
 const schema = z.object({
-  tenantId: z.string().min(1, 'Tenant ID or Slug is required'),
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  tenantId: z.string().trim().min(1, 'Workspace is required'),
+  email: z.string().trim().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
 });
 
 type FormData = z.infer<typeof schema>;
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 export function LoginPage() {
   const nav = useNavigate();
+  const [params] = useSearchParams();
   const { showToast } = useToast();
-  
+
   const [isTwoFactorPending, setIsTwoFactorPending] = useState(false);
   const [tempToken, setTempToken] = useState('');
   const [totpCode, setTotpCode] = useState('');
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
+    defaultValues: { tenantId: params.get('workspace') ?? lastWorkspace() },
   });
+  const workspace = watch('tenantId');
+
+  useEffect(() => {
+    if (params.get('error') === 'sso_failed') {
+      showToast('Google sign-in failed. Your Google email must already have an account in that workspace.', 'error');
+    }
+  }, [params, showToast]);
 
   const onSubmit = async (values: FormData) => {
     try {
       const res = await api.post('/auth/login', values);
-      const data = res.data?.data ?? res.data;
-      
+      const data = res.data;
+      rememberWorkspace(values.tenantId);
+
       if (data.twoFactorRequired) {
         setIsTwoFactorPending(true);
         setTempToken(data.tempToken);
@@ -48,12 +58,7 @@ export function LoginPage() {
       showToast('Welcome back');
       nav('/');
     } catch (error: unknown) {
-      const msg = getErrorMessage(error);
-      if (msg === 'Invalid credentials') {
-        showToast('Login failed. Please double-check your Tenant ID and Admin Email.', 'error');
-      } else {
-        showToast(msg, 'error');
-      }
+      showToast(getErrorMessage(error), 'error');
     }
   };
 
@@ -64,11 +69,11 @@ export function LoginPage() {
         tempToken,
         code: totpCode,
       });
-      setAuth(res.data?.data ?? res.data);
+      setAuth(res.data);
       showToast('Welcome back');
       nav('/');
     } catch (error: unknown) {
-      showToast('Invalid or expired 2FA code', 'error');
+      showToast(getErrorMessage(error), 'error');
     }
   };
 
@@ -110,10 +115,10 @@ export function LoginPage() {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               <div className="space-y-2">
                 <Label className="text-slate-300 flex items-center gap-2">
-                  <Building2 size={14} /> Tenant ID / Slug
+                  <Building2 size={14} /> Workspace
                 </Label>
                 <Input 
-                  placeholder="e.g. acme-corp or UUID" 
+                  placeholder="e.g. acme-corp-1a2b3c" 
                   className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500"
                   {...register('tenantId')} 
                 />
@@ -170,7 +175,13 @@ export function LoginPage() {
               </div>
 
               <a
-                href={`${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/auth/google`}
+                href={workspace ? `${API_BASE_URL}/auth/google?tenant=${encodeURIComponent(workspace.trim())}` : undefined}
+                onClick={(e) => {
+                  if (!workspace) {
+                    e.preventDefault();
+                    showToast('Enter your workspace first', 'error');
+                  }
+                }}
                 className="flex w-full items-center justify-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors"
               >
                 <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">

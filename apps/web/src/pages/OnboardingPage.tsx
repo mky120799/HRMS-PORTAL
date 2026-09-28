@@ -16,7 +16,7 @@ const SEEDING_STEPS = [
   'Building 6 months of leave analytics…',
   'Adding job postings & candidate pipeline…',
   'Writing performance reviews…',
-  'Upgrading workspace to Business Edition…',
+  'Finishing your 30-day full-access trial workspace…',
   'Almost done — polishing the data…',
 ];
 
@@ -71,7 +71,7 @@ export function OnboardingPage() {
     try {
       await api.post('/tenants/seed-demo');
       sessionStorage.setItem('hrms_demo_mode', 'true');
-      showToast('Your Business Edition workspace is ready! 🎉', 'success');
+      showToast('Your workspace is ready with sample data 🎉', 'success');
       nav('/');
     } catch (err: any) {
       if (err?.response?.status === 409) {

@@ -1,44 +1,46 @@
-import { Controller, Get, Post, Body, UseGuards, Request, UsePipes, ForbiddenException } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { NotificationsService } from './notifications.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { InternalAuthGuard } from '../../common/guards/internal-auth.guard';
-import { createNotificationSchema, composeEmailSchema } from './dto/create-notification.dto';
-import type { CreateNotificationDto, ComposeEmailDto } from './dto/create-notification.dto';
+import { CurrentUser, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
+  announceSchema,
+  composeEmailSchema,
+  listNotificationsSchema,
+  type AnnounceDto,
+  type ComposeEmailDto,
+  type ListNotificationsQuery,
+} from './dto/notification.dto';
 
-@Controller()
+@ApiTags('Notifications')
+@ApiBearerAuth()
+@Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(private readonly notifications: NotificationsService) {}
 
-  @Post('internal/notifications')
-  @UseGuards(InternalAuthGuard)
-  @UsePipes(new ZodValidationPipe(createNotificationSchema))
-  async createInternalNotification(@Body() dto: CreateNotificationDto) {
-    // Requires tenantId in body for internal calls, otherwise pass "SYSTEM" or real tenantId
-    const tenantId = (dto as any).tenantId || 'SYSTEM';
-    return this.notificationsService.createNotification(tenantId, dto, true);
+  @Get()
+  list(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(listNotificationsSchema)) q: ListNotificationsQuery) {
+    return this.notifications.list(user, q);
   }
 
-  @Get('notifications')
-  @UseGuards(JwtAuthGuard)
-  async getNotifications(@Request() req: any) {
-    return this.notificationsService.getNotifications(req.user.tenantId);
+  @Post(':id/read')
+  markRead(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.notifications.markRead(user, id);
   }
 
-  @Post('notifications')
-  @UseGuards(JwtAuthGuard)
-  @UsePipes(new ZodValidationPipe(createNotificationSchema))
-  async createNotification(@Request() req: any, @Body() dto: CreateNotificationDto) {
-    return this.notificationsService.createNotification(req.user.tenantId, dto);
+  @Post('compose-email')
+  @Roles('ADMIN')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  compose(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(composeEmailSchema)) dto: ComposeEmailDto) {
+    return this.notifications.composeEmail(user, dto);
   }
 
-  @Post('notifications/compose-email')
-  @UseGuards(JwtAuthGuard)
-  @UsePipes(new ZodValidationPipe(composeEmailSchema))
-  async composeEmail(@Request() req: any, @Body() dto: ComposeEmailDto) {
-    if (req.user.role !== 'ADMIN') {
-      throw new ForbiddenException('Only admins can send emails');
-    }
-    return this.notificationsService.composeEmail(req.user.tenantId, dto);
+  @Post('announce')
+  @Roles('ADMIN')
+  @Throttle({ default: { limit: 5, ttl: 60 * 60_000 } })
+  announce(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(announceSchema)) dto: AnnounceDto) {
+    return this.notifications.announce(user, dto);
   }
 }

@@ -1,72 +1,55 @@
-import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, Req, StreamableFile } from '@nestjs/common';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import type { FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { DocumentsService } from './documents.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { CurrentUser, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
 import { RequiresPlan } from '../../common/decorators/plan.decorator';
-import { SubscriptionPlan } from '../../common/subscription/subscription-plans';
-import { diskStorage } from 'multer';
-import { v4 as uuidv4 } from 'uuid';
-import * as path from 'path';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 
-const storage = diskStorage({
-  destination: './uploads/documents',
-  filename: (req, file, cb) => {
-    const filename = `${uuidv4()}${path.extname(file.originalname)}`;
-    cb(null, filename);
-  },
-});
+const listQuery = z.object({ employeeId: z.string().uuid().optional() });
+const expiringQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) });
 
+@ApiTags('Documents')
+@ApiBearerAuth()
 @Controller('documents')
-@UseGuards(JwtAuthGuard, RolesGuard, SubscriptionGuard)
-@RequiresPlan(SubscriptionPlan.BASIC)
+@RequiresPlan('BASIC')
 export class DocumentsController {
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(private readonly documents: DocumentsService) {}
 
   @Get('me')
-  async getMyDocuments(@Request() req: any) {
-    if (!req.user.employeeId) return [];
-    return this.documentsService.getMyDocuments(req.user.tenantId, req.user.employeeId);
+  mine(@CurrentUser() user: AuthUser) {
+    return this.documents.mine(user);
   }
 
-  @Get('all')
+  @Get()
   @Roles('ADMIN', 'MANAGER')
-  async getAllDocuments(@Request() req: any) {
-    return this.documentsService.getAllDocuments(req.user.tenantId);
+  list(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(listQuery)) q: z.infer<typeof listQuery>) {
+    return this.documents.list(user, q.employeeId);
   }
 
-  @Post('upload')
-  @UseInterceptors(FileInterceptor('file', { storage }))
-  async uploadDocument(
-    @Request() req: any,
-    @UploadedFile() file: Express.Multer.File,
-    @Body() body: { title: string; type: string; expiryDate?: string }
-  ) {
-    if (!file) {
-      throw new BadRequestException('File is required');
-    }
-    
-    if (!req.user.employeeId) {
-      throw new BadRequestException('User is not linked to an employee record');
-    }
+  @Get('expiring')
+  @Roles('ADMIN')
+  expiring(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(expiringQuery)) q: z.infer<typeof expiringQuery>) {
+    return this.documents.expiring(user.tenantId, q.days);
+  }
 
-    const fileUrl = `/uploads/documents/${file.filename}`;
-    
-    return this.documentsService.createDocument({
-      tenantId: req.user.tenantId,
-      employeeId: req.user.employeeId,
-      title: body.title,
-      type: body.type || 'OTHER',
-      fileUrl,
-      expiryDate: body.expiryDate ? new Date(body.expiryDate) : undefined,
-    });
+  /** multipart/form-data: file (PDF/PNG/JPEG ≤ 10 MB), title, type, expiryDate?, employeeId? (admin only) */
+  @Post('upload')
+  @ApiConsumes('multipart/form-data')
+  async upload(@CurrentUser() user: AuthUser, @Req() req: FastifyRequest) {
+    return this.documents.upload(user, await req.file());
+  }
+
+  @Get(':id/download')
+  async download(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    const { stream, mimeType, filename } = await this.documents.download(user, id);
+    return new StreamableFile(stream, { type: mimeType, disposition: `attachment; filename="${filename}"` });
   }
 
   @Delete(':id')
-  async deleteDocument(@Param('id') id: string, @Request() req: any) {
-    // Ideally we should check if the document belongs to the user or if they are admin
-    return this.documentsService.deleteDocument(id, req.user.tenantId);
+  remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.documents.remove(user, id);
   }
 }

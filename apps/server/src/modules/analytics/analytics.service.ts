@@ -1,88 +1,68 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { todayIn, parseDateOnly } from '../../common/utils/dates';
 
+/**
+ * Workspace KPIs for the dashboard. All queries are aggregate (count/groupBy)
+ * so cost stays flat as tenants grow; nothing loads full tables into memory.
+ */
 @Injectable()
 export class AnalyticsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async getOverview(tenantId: string) {
-    const [
-      totalEmployees,
-      totalLeaveRequests,
-      pendingLeaves,
-      openJobs,
-      totalApplications,
-      hiredCount,
-      employees,
-      leavesByMonth,
-    ] = await Promise.all([
-      this.prisma.employee.count({ where: { tenantId } }),
-      this.prisma.leaveRequest.count({ where: { tenantId } }),
+  async overview(tenantId: string, timezone: string) {
+    const since = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 5, 1));
+    const yearAgo = new Date(Date.now() - 365 * 86_400_000);
+    const today = parseDateOnly(todayIn(timezone));
+
+    const [activeEmployees, exitedLastYear, pendingLeaves, openJobs, byDepartment, funnel, presentToday, leaveRows] = await Promise.all([
+      this.prisma.employee.count({ where: { tenantId, status: { not: 'EXITED' } } }),
+      this.prisma.employee.count({ where: { tenantId, status: 'EXITED', exitDate: { gte: yearAgo } } }),
       this.prisma.leaveRequest.count({ where: { tenantId, status: 'PENDING' } }),
       this.prisma.job.count({ where: { tenantId, status: 'OPEN' } }),
-      this.prisma.application.count({ where: { job: { tenantId } } }),
-      this.prisma.application.count({ where: { job: { tenantId }, status: 'HIRED' } }),
-      // Department breakdown
-      this.prisma.employee.groupBy({
-        by: ['department'],
-        where: { tenantId },
-        _count: { id: true },
-      }),
-      // Monthly leave data for the last 6 months
-      this.prisma.leaveRequest.findMany({
-        where: {
-          tenantId,
-          createdAt: {
-            gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000),
-          },
-        },
-        select: { createdAt: true, status: true, type: true },
-      }),
+      this.prisma.employee.groupBy({ by: ['department'], where: { tenantId, status: { not: 'EXITED' } }, _count: { _all: true } }),
+      this.prisma.application.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
+      this.prisma.attendanceRecord.count({ where: { tenantId, date: today } }),
+      this.prisma.$queryRaw<{ month: string; status: string; count: bigint }[]>`
+        SELECT to_char(date_trunc('month', "startDate"), 'YYYY-MM') AS month, status, COUNT(*)::bigint AS count
+        FROM "LeaveRequest"
+        WHERE "tenantId" = ${tenantId} AND "startDate" >= ${since}
+        GROUP BY 1, 2 ORDER BY 1`,
     ]);
 
-    // Process department breakdown
-    const departmentBreakdown = employees.map((e) => ({
-      department: e.department ?? 'Unassigned',
-      count: e._count.id,
-    }));
-
-    // Process monthly leave trend
-    const monthlyLeave = this.buildMonthlyLeave(leavesByMonth);
-
-    // Hiring funnel
-    const hiringFunnel = [
-      { stage: 'Applied', count: totalApplications },
-      { stage: 'Interviewed', count: await this.prisma.application.count({ where: { job: { tenantId }, status: 'INTERVIEW' } }) },
-      { stage: 'Hired', count: hiredCount },
-    ];
+    const funnelCount = (s: string) => funnel.find((f) => f.status === s)?._count._all ?? 0;
+    const totalApplications = funnel.reduce((sum, f) => sum + f._count._all, 0);
+    const months = new Map<string, { month: string; approved: number; pending: number; rejected: number }>();
+    for (const r of leaveRows) {
+      const m = months.get(r.month) ?? { month: r.month, approved: 0, pending: 0, rejected: 0 };
+      const c = Number(r.count);
+      if (r.status === 'APPROVED') m.approved += c;
+      else if (r.status === 'PENDING') m.pending += c;
+      else if (r.status === 'REJECTED') m.rejected += c;
+      months.set(r.month, m);
+    }
+    const avgHeadcount = activeEmployees + exitedLastYear / 2;
 
     return {
       summary: {
-        totalEmployees,
-        totalLeaveRequests,
+        totalEmployees: activeEmployees,
         pendingLeaves,
         openJobs,
         totalApplications,
-        hiredCount,
+        hiredCount: funnelCount('HIRED'),
+        presentToday,
+        attendanceRateToday: activeEmployees ? Math.round((presentToday / activeEmployees) * 100) : 0,
+        attritionRate12m: avgHeadcount ? Math.round((exitedLastYear / avgHeadcount) * 1000) / 10 : 0,
       },
-      departmentBreakdown,
-      monthlyLeave,
-      hiringFunnel,
+      departmentBreakdown: byDepartment.map((d) => ({ department: d.department ?? 'Unassigned', count: d._count._all })),
+      monthlyLeave: [...months.values()],
+      hiringFunnel: [
+        { stage: 'Applied', count: totalApplications },
+        { stage: 'Screening', count: funnelCount('SCREENING') },
+        { stage: 'Interview', count: funnelCount('INTERVIEW') },
+        { stage: 'Offered', count: funnelCount('OFFERED') },
+        { stage: 'Hired', count: funnelCount('HIRED') },
+      ],
     };
-  }
-
-  private buildMonthlyLeave(leaves: { createdAt: Date; status: string; type: string }[]) {
-    const months: Record<string, { month: string; approved: number; pending: number; rejected: number }> = {};
-
-    leaves.forEach((leave) => {
-      const key = leave.createdAt.toISOString().slice(0, 7); // "YYYY-MM"
-      const label = new Date(leave.createdAt).toLocaleString('default', { month: 'short', year: '2-digit' });
-      if (!months[key]) months[key] = { month: label, approved: 0, pending: 0, rejected: 0 };
-      if (leave.status === 'APPROVED') months[key].approved++;
-      else if (leave.status === 'PENDING') months[key].pending++;
-      else if (leave.status === 'REJECTED') months[key].rejected++;
-    });
-
-    return Object.values(months).sort((a, b) => a.month.localeCompare(b.month));
   }
 }

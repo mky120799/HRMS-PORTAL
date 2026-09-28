@@ -2,18 +2,20 @@
   "name": "hrms-saas",
   "private": true,
   "workspaces": [
-    "packages/*",
     "apps/*"
   ],
   "scripts": {
-    "bootstrap": "npm run build -w @hrms/shared && npm run prisma:generate -w @hrms/server",
-    "build": "npm run build --workspaces --if-present",
-    "build:shared": "npm run build -w @hrms/shared",
     "dev:server": "npm run start:dev -w @hrms/server",
-    "prisma:server": "npm run prisma -w @hrms/server",
     "dev:web": "npm run dev -w @hrms/web",
-    "build:web": "npm run build -w @hrms/web",
-    "start:all": "npx concurrently \"npm:dev:*\""
+    "dev": "npx concurrently -n api,web \"npm:dev:server\" \"npm:dev:web\"",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck -w @hrms/server && npm run typecheck -w @hrms/web",
+    "test": "npm test -w @hrms/server",
+    "test:e2e:api": "npm run test:e2e -w @hrms/server",
+    "test:e2e:ui": "npm test -w @hrms/e2e",
+    "db:migrate": "npm run prisma:migrate -w @hrms/server",
+    "db:deploy": "npm run prisma:deploy -w @hrms/server",
+    "db:seed": "npm run prisma -w @hrms/server -- db seed"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
@@ -24,6 +26,6 @@
     "typescript": "^5.7.2"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }

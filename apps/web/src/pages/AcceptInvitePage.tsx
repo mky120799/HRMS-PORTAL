@@ -6,6 +6,7 @@ import { Lock, PartyPopper } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { getErrorMessage } from '../lib/errors';
+import { passwordSchema } from '../lib/validation';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -13,7 +14,7 @@ import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
 
 const schema = z.object({
-  password: z.string().min(8, 'Minimum 8 characters required'),
+  password: passwordSchema,
 });
 
 export function AcceptInvitePage() {

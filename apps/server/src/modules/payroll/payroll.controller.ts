@@ -1,34 +1,57 @@
-import { Controller, Get, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, StreamableFile } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PayrollService } from './payroll.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { CurrentUser, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
 import { RequiresPlan } from '../../common/decorators/plan.decorator';
-import { SubscriptionPlan } from '../../common/subscription/subscription-plans';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { periodSchema, upsertSalarySchema, type PeriodDto, type UpsertSalaryDto } from './dto/payroll.dto';
 
+@ApiTags('Payroll')
+@ApiBearerAuth()
 @Controller('payroll')
-@UseGuards(JwtAuthGuard, RolesGuard, SubscriptionGuard)
-@RequiresPlan(SubscriptionPlan.BASIC)
+@RequiresPlan('BASIC')
 export class PayrollController {
-  constructor(private readonly payrollService: PayrollService) {}
+  constructor(private readonly payroll: PayrollService) {}
 
   @Get('my-payslips')
-  async getMyPayslips(@Request() req: any) {
-    // Only fetch for employees
-    if (!req.user.employeeId) return [];
-    return this.payrollService.getMyPayslips(req.user.tenantId, req.user.employeeId);
+  myPayslips(@CurrentUser() user: AuthUser) {
+    return this.payroll.myPayslips(user);
   }
 
-  @Get('all')
-  @Roles('ADMIN', 'MANAGER')
-  async getAllPayslips(@Request() req: any) {
-    return this.payrollService.getAllPayslips(req.user.tenantId);
+  @Get('payslips/:id/pdf')
+  async payslipPdf(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    const { pdf, filename } = await this.payroll.payslipPdf(user, id);
+    return new StreamableFile(pdf, { type: 'application/pdf', disposition: `attachment; filename="${filename}"` });
   }
 
-  @Post('generate')
+  @Get('salaries')
   @Roles('ADMIN')
-  async generatePayslips(@Request() req: any, @Body() body: { month: number, year: number }) {
-    return this.payrollService.generatePayslips(req.user.tenantId, body.month, body.year);
+  listSalaries(@CurrentUser() user: AuthUser) {
+    return this.payroll.listSalaries(user.tenantId);
+  }
+
+  @Put('salaries/:employeeId')
+  @Roles('ADMIN')
+  upsertSalary(@CurrentUser() user: AuthUser, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Body(new ZodValidationPipe(upsertSalarySchema)) dto: UpsertSalaryDto) {
+    return this.payroll.upsertSalary(user, employeeId, dto);
+  }
+
+  @Get('runs')
+  @Roles('ADMIN')
+  getRun(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(periodSchema)) q: PeriodDto) {
+    return this.payroll.getRun(user.tenantId, q.year, q.month);
+  }
+
+  @Post('runs/generate')
+  @Roles('ADMIN')
+  generate(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(periodSchema)) dto: PeriodDto) {
+    return this.payroll.generate(user, dto.year, dto.month);
+  }
+
+  @Post('runs/finalize')
+  @Roles('ADMIN')
+  finalize(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(periodSchema)) dto: PeriodDto) {
+    return this.payroll.finalize(user, dto.year, dto.month);
   }
 }

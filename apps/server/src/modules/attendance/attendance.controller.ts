@@ -1,32 +1,41 @@
-import { Controller, Post, UseGuards, Request, Get } from '@nestjs/common';
-import { AttendanceService } from './attendance.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Controller, Get, NotFoundException, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
+import { AttendanceService } from './attendance.service';
+import { CurrentTenant, CurrentUser, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
+import type { TenantSnapshot } from '../../common/tenant/tenant-context.service';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { isoDate } from '../../common/validation/common.schemas';
+
+const rangeQuery = z.object({ from: isoDate.optional(), to: isoDate.optional() });
+const dayQuery = z.object({ date: isoDate.optional() });
 
 @ApiTags('Attendance')
 @ApiBearerAuth()
 @Controller('attendance')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class AttendanceController {
-  constructor(private readonly attendanceService: AttendanceService) {}
+  constructor(private readonly attendance: AttendanceService) {}
 
   @Post('clock-in')
-  @Roles('EMPLOYEE', 'MANAGER', 'ADMIN')
-  async clockIn(@Request() req: any) {
-    return this.attendanceService.clockIn(req.user.tenantId, req.user.sub);
+  clockIn(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantSnapshot) {
+    return this.attendance.clockIn(user, tenant);
   }
 
   @Post('clock-out')
-  @Roles('EMPLOYEE', 'MANAGER', 'ADMIN')
-  async clockOut(@Request() req: any) {
-    return this.attendanceService.clockOut(req.user.tenantId, req.user.sub);
+  clockOut(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantSnapshot) {
+    return this.attendance.clockOut(user, tenant);
   }
 
   @Get('me')
-  @Roles('EMPLOYEE', 'MANAGER', 'ADMIN')
-  async getMyAttendance(@Request() req: any) {
-    return this.attendanceService.getMyAttendance(req.user.tenantId, req.user.sub);
+  async mine(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantSnapshot, @Query(new ZodValidationPipe(rangeQuery)) q: z.infer<typeof rangeQuery>) {
+    if (!user.employeeId) throw new NotFoundException('Your account is not linked to an employee profile');
+    return this.attendance.mine(user, tenant, q.from, q.to);
+  }
+
+  @Get('roster')
+  @Roles('ADMIN', 'MANAGER')
+  roster(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantSnapshot, @Query(new ZodValidationPipe(dayQuery)) q: z.infer<typeof dayQuery>) {
+    return this.attendance.roster(user, tenant, q.date);
   }
 }

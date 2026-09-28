@@ -1,26 +1,14 @@
 import { Module } from '@nestjs/common';
-import { HiringService } from './hiring.service';
-import { HiringController } from './hiring.controller';
-import { PrismaModule } from '../../common/prisma/prisma.module';
 import { BullModule } from '@nestjs/bullmq';
+import { HiringService, HIRING_QUEUE } from './hiring.service';
+import { CareersController, HiringController } from './hiring.controller';
 import { HiringProcessor } from './hiring.processor';
 import { AiModule } from '../ai/ai.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
-  imports: [
-    PrismaModule,
-    AiModule,
-    IntegrationsModule,
-    BullModule.registerQueue({
-      name: 'notifications',
-    }),
-    BullModule.registerQueue({
-      name: 'hiring',
-    }),
-  ],
-  controllers: [HiringController],
+  imports: [AiModule, IntegrationsModule, BullModule.registerQueue({ name: HIRING_QUEUE })],
+  controllers: [CareersController, HiringController],
   providers: [HiringService, HiringProcessor],
 })
 export class HiringModule {}
-

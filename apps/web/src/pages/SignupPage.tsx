@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { setAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
+import { passwordSchema } from '../lib/validation';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -17,7 +18,7 @@ const schema = z.object({
   tenantName: z.string().min(2, 'Company name is too short'),
   name: z.string().min(1, 'Full name is required'),
   email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: passwordSchema,
 });
 
 type FormData = z.infer<typeof schema>;
@@ -32,7 +33,7 @@ export function SignupPage() {
   const onSubmit = async (values: FormData) => {
     try {
       const res = await api.post('/auth/signup', values);
-      setAuth(res.data?.data ?? res.data);
+      setAuth(res.data);
       showToast('Welcome! Your workspace is ready 🎉');
       nav('/onboarding');
     } catch (error: unknown) {

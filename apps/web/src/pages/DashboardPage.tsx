@@ -33,16 +33,14 @@ export function DashboardPage() {
   const { showToast } = useToast();
   const auth = getAuth();
   
-  const employees = useQuery({ queryKey: ['employees'], queryFn: async () => (await api.get('/employees')).data });
-  const leaves = useQuery({ queryKey: ['leave'], queryFn: async () => (await api.get('/leave-requests')).data });
-  const attendance = useQuery({ queryKey: ['attendance'], queryFn: async () => (await api.get('/attendance/me')).data });
-  const analytics = useQuery({ queryKey: ['analytics'], queryFn: async () => {
-    const res = await api.get('/analytics/overview');
-    return res.data?.data ?? res.data;
-  }});
-  
+  const isManager = auth?.user.role === 'ADMIN' || auth?.user.role === 'MANAGER';
+  const employees = useQuery({ queryKey: ['employees', 'count'], queryFn: async () => (await api.get('/employees', { params: { pageSize: 1 } })).data });
+  const leaves = useQuery({ queryKey: ['leave', 'mine'], queryFn: async () => (await api.get('/leave-requests', { params: { scope: 'mine', pageSize: 100 } })).data });
+  const attendance = useQuery({ queryKey: ['attendance'], queryFn: async () => (await api.get('/attendance/me')).data, retry: false });
+  const analytics = useQuery({ queryKey: ['analytics'], enabled: isManager, retry: false, queryFn: async () => (await api.get('/analytics/overview')).data });
+
   const hiringData = analytics.data?.hiringFunnel ?? [];
-  const todayRecord = attendance.data?.find((r: any) => new Date(r.date).toDateString() === new Date().toDateString());
+  const todayRecord = attendance.data?.today ?? null;
 
   const handleClockIn = async () => {
     try {
@@ -80,7 +78,7 @@ export function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold">{employees.data?.length ?? 0}</div>
+            <div className="text-4xl font-bold">{employees.data?.total ?? 0}</div>
             <p className="text-xs text-emerald-500 mt-2 flex items-center gap-1 font-medium">
               <TrendingUp size={14} /> +12% from last month
             </p>
@@ -95,8 +93,8 @@ export function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold">{leaves.data?.filter((l: any) => l.status === 'APPROVED').length ?? 0}</div>
-            <p className="text-xs text-muted-foreground mt-2">Across all departments</p>
+            <div className="text-4xl font-bold">{leaves.data?.items?.filter((l: any) => l.status === 'APPROVED').length ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-2">Your approved requests</p>
           </CardContent>
         </Card>
 
@@ -108,8 +106,8 @@ export function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold">{leaves.data?.filter((l: any) => l.status === 'PENDING').length ?? 0}</div>
-            <p className="text-xs text-muted-foreground mt-2">Requires admin action</p>
+            <div className="text-4xl font-bold">{isManager ? analytics.data?.summary?.pendingLeaves ?? 0 : leaves.data?.items?.filter((l: any) => l.status === 'PENDING').length ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-2">{isManager ? 'Awaiting approval across the workspace' : 'Your requests awaiting approval'}</p>
           </CardContent>
         </Card>
       </div>

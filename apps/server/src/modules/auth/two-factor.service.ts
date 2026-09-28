@@ -26,10 +26,21 @@ export class TwoFactorAuthService {
     return { qrCodeUrl: await qrcode.toDataURL(otpauthUrl) };
   }
 
-  verifyCode(code: string, encryptedSecret: string | null): boolean {
-    if (!encryptedSecret) return false;
-    const secret = this.crypto.decrypt(encryptedSecret);
-    return this.otp.verifySync({ token: code, secret }).valid;
+  verifyCode(code: string, storedSecret: string | null): boolean {
+    if (!storedSecret) return false;
+    return this.otp.verifySync({ token: code, secret: this.readSecret(storedSecret) }).valid;
+  }
+
+  /** Secrets created before encryption was introduced are plaintext base32 (no "v1." prefix). */
+  private readSecret(stored: string): string {
+    return stored.startsWith('v1.') ? this.crypto.decrypt(stored) : stored;
+  }
+
+  /** Re-encrypts a legacy plaintext secret after it has been used successfully. */
+  async upgradeLegacySecret(userId: string, stored: string | null) {
+    if (stored && !stored.startsWith('v1.')) {
+      await this.prisma.user.update({ where: { id: userId }, data: { twoFactorSecret: this.crypto.encrypt(stored) } });
+    }
   }
 
   async enable(user: { id: string; twoFactorSecret: string | null }, code: string) {

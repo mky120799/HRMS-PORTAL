@@ -1,0 +1,6 @@
+# TLS termination for single-host deployments. Caddy obtains and renews
+# Let's Encrypt certificates automatically for $DOMAIN.
+{$DOMAIN} {
+    encode zstd gzip
+    reverse_proxy web:8080
+}

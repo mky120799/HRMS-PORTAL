@@ -1,79 +1,96 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import type { AuthUser } from '../../common/auth/auth-user';
 
+const PEOPLE = { select: { id: true, firstName: true, lastName: true, department: true, designation: true } } as const;
+
+/**
+ * Review cycle state machine (per employee, per cycle):
+ *   DRAFT ──(employee self-review)──▶ SELF_SUBMITTED ──(manager review)──▶ COMPLETED
+ * The reviewer is the employee's manager at the time the cycle is opened.
+ */
 @Injectable()
 export class PerformanceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async getMyReviews(tenantId: string, employeeId: string) {
+  mine(user: AuthUser) {
+    if (!user.employeeId) return [];
     return this.prisma.performanceReview.findMany({
-      where: { tenantId, employeeId },
-      include: { reviewer: true },
+      where: { tenantId: user.tenantId, employeeId: user.employeeId },
+      include: { reviewer: PEOPLE },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async getReviewsToManager(tenantId: string, managerId: string) {
+  team(user: AuthUser) {
+    if (!user.employeeId) return [];
     return this.prisma.performanceReview.findMany({
-      where: { tenantId, reviewerId: managerId, status: 'SELF_SUBMITTED' },
-      include: { employee: true },
-      orderBy: { createdAt: 'desc' },
+      where: { tenantId: user.tenantId, reviewerId: user.employeeId },
+      include: { employee: PEOPLE },
+      orderBy: [{ status: 'desc' }, { createdAt: 'desc' }],
     });
   }
 
-  async getAllReviews(tenantId: string) {
+  all(tenantId: string, cycleName?: string) {
     return this.prisma.performanceReview.findMany({
-      where: { tenantId },
-      include: { employee: true, reviewer: true },
+      where: { tenantId, ...(cycleName ? { cycleName } : {}) },
+      include: { employee: PEOPLE, reviewer: PEOPLE },
       orderBy: { createdAt: 'desc' },
+      take: 1000,
     });
   }
 
-  async createReviewCycle(data: { tenantId: string; cycleName: string }) {
-    // For simplicity, create a draft review for all employees in the tenant
-    const employees = await this.prisma.employee.findMany({ where: { tenantId: data.tenantId } });
-    const reviews = [];
-    
-    for (const emp of employees) {
-      const review = await this.prisma.performanceReview.create({
-        data: {
-          tenantId: data.tenantId,
-          employeeId: emp.id,
-          cycleName: data.cycleName,
-          status: 'DRAFT',
-        },
-      });
-      reviews.push(review);
+  async cycles(tenantId: string) {
+    const rows = await this.prisma.performanceReview.groupBy({ by: ['cycleName', 'status'], where: { tenantId }, _count: { _all: true } });
+    const byCycle = new Map<string, { cycleName: string; draft: number; selfSubmitted: number; completed: number; total: number }>();
+    for (const r of rows) {
+      const c = byCycle.get(r.cycleName) ?? { cycleName: r.cycleName, draft: 0, selfSubmitted: 0, completed: 0, total: 0 };
+      if (r.status === 'DRAFT') c.draft += r._count._all;
+      if (r.status === 'SELF_SUBMITTED') c.selfSubmitted += r._count._all;
+      if (r.status === 'COMPLETED') c.completed += r._count._all;
+      c.total += r._count._all;
+      byCycle.set(r.cycleName, c);
     }
-    return { message: `Created ${reviews.length} reviews for cycle ${data.cycleName}` };
+    return [...byCycle.values()];
   }
 
-  async submitSelfReview(id: string, tenantId: string, employeeId: string, selfRating: number, comments: string) {
-    const review = await this.prisma.performanceReview.findFirst({
-      where: { id, tenantId, employeeId },
+  /** Opens a cycle for every active employee. Idempotent: re-running only adds people who joined since. */
+  async openCycle(tenantId: string, cycleName: string) {
+    const employees = await this.prisma.employee.findMany({ where: { tenantId, status: 'ACTIVE' }, select: { id: true, managerId: true } });
+    const { count } = await this.prisma.performanceReview.createMany({
+      data: employees.map((e) => ({ tenantId, employeeId: e.id, reviewerId: e.managerId, cycleName, status: 'DRAFT' })),
+      skipDuplicates: true,
     });
-    
+    const withoutManager = employees.filter((e) => !e.managerId).length;
+    return { cycleName, created: count, employeesWithoutManager: withoutManager };
+  }
+
+  async submitSelf(user: AuthUser, id: string, rating: number, comments: string) {
+    const review = await this.prisma.performanceReview.findFirst({ where: { id, tenantId: user.tenantId } });
     if (!review) throw new NotFoundException('Review not found');
-
+    if (review.employeeId !== user.employeeId) throw new ForbiddenException('You can only submit your own self-review');
+    if (review.status !== 'DRAFT') throw new ConflictException('Self-review has already been submitted');
     return this.prisma.performanceReview.update({
       where: { id },
-      data: {
-        selfRating,
-        comments,
-        status: 'SELF_SUBMITTED',
-      },
+      data: { selfRating: rating, selfComments: comments, status: 'SELF_SUBMITTED', submittedAt: new Date() },
     });
   }
 
-  async submitManagerReview(id: string, tenantId: string, managerId: string, managerRating: number, comments: string) {
-    // Assuming manager has rights (in a real app we'd verify managerId == reviewerId or role)
+  async submitManager(user: AuthUser, id: string, rating: number, comments: string) {
+    const review = await this.prisma.performanceReview.findFirst({ where: { id, tenantId: user.tenantId } });
+    if (!review) throw new NotFoundException('Review not found');
+    if (review.employeeId === user.employeeId) throw new ForbiddenException('You cannot review yourself');
+    const isReviewer = !!user.employeeId && review.reviewerId === user.employeeId;
+    if (!isReviewer && user.role !== 'ADMIN') throw new ForbiddenException('Only the assigned reviewer or an admin can complete this review');
+    if (review.status !== 'SELF_SUBMITTED') throw new ConflictException('The employee must submit their self-review first');
     return this.prisma.performanceReview.update({
       where: { id },
       data: {
-        managerRating,
-        comments,
-        reviewerId: managerId,
+        managerRating: rating,
+        managerComments: comments,
+        reviewerId: review.reviewerId ?? user.employeeId,
         status: 'COMPLETED',
+        completedAt: new Date(),
       },
     });
   }

@@ -1,158 +1,183 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Target, TrendingUp, CheckCircle2 } from 'lucide-react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Target, Star, Users, Plus } from 'lucide-react';
 import { api } from '../lib/api';
+import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
-
+import { getAuth } from '../lib/auth';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Textarea } from '../components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { useState } from 'react';
+
+type Person = { firstName: string; lastName: string; designation?: string | null };
+type Review = {
+  id: string;
+  cycleName: string;
+  status: 'DRAFT' | 'SELF_SUBMITTED' | 'COMPLETED';
+  selfRating: number | null;
+  managerRating: number | null;
+  selfComments: string | null;
+  managerComments: string | null;
+  employee?: Person;
+  reviewer?: Person | null;
+};
+type Cycle = { cycleName: string; draft: number; selfSubmitted: number; completed: number; total: number };
+
+function Rating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button key={n} type="button" onClick={() => onChange(n)} aria-label={`${n} star`}>
+          <Star size={22} className={n <= value ? 'fill-amber-400 text-amber-400' : 'text-slate-300'} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReviewForm({ submitLabel, onSubmit, busy }: { submitLabel: string; onSubmit: (rating: number, comments: string) => void; busy: boolean }) {
+  const [rating, setRating] = useState(3);
+  const [comments, setComments] = useState('');
+  return (
+    <div className="space-y-3 pt-3 border-t mt-3">
+      <Rating value={rating} onChange={setRating} />
+      <Textarea placeholder="Comments" value={comments} onChange={(e) => setComments(e.target.value)} maxLength={4000} />
+      <Button size="sm" disabled={busy || !comments.trim()} onClick={() => onSubmit(rating, comments)}>
+        {submitLabel}
+      </Button>
+    </div>
+  );
+}
+
+const statusLabel = { DRAFT: 'Awaiting self-review', SELF_SUBMITTED: 'Awaiting manager', COMPLETED: 'Completed' };
 
 export function PerformancePage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
-  const [selectedReview, setSelectedReview] = useState<any>(null);
-  const [rating, setRating] = useState('');
-  const [comments, setComments] = useState('');
+  const role = getAuth()?.user.role;
+  const [cycleName, setCycleName] = useState('');
+  const onError = (e: unknown) => showToast(getErrorMessage(e), 'error');
+  const refresh = () => qc.invalidateQueries({ queryKey: ['performance'] });
 
-  const user = useQuery({ queryKey: ['me'], queryFn: async () => (await api.get('/auth/me')).data });
-  const myReviews = useQuery({ queryKey: ['performance', 'me'], queryFn: async () => (await api.get('/performance/me')).data });
-  const teamReviews = useQuery({ 
-    queryKey: ['performance', 'team'], 
-    queryFn: async () => (await api.get('/performance/team')).data,
-    enabled: user.data?.role === 'ADMIN' || user.data?.role === 'MANAGER'
-  });
+  const mine = useQuery({ queryKey: ['performance', 'me'], queryFn: async () => (await api.get<Review[]>('/performance/me')).data, retry: false });
+  const team = useQuery({ queryKey: ['performance', 'team'], enabled: role === 'ADMIN' || role === 'MANAGER', queryFn: async () => (await api.get<Review[]>('/performance/team')).data });
+  const cycles = useQuery({ queryKey: ['performance', 'cycles'], enabled: role === 'ADMIN', queryFn: async () => (await api.get<Cycle[]>('/performance/cycles')).data });
 
-  const createCycle = useMutation({
-    mutationFn: async () => api.post('/performance/cycle', { cycleName: 'Q3 2026 Review' }),
+  const self = useMutation({
+    mutationFn: async (v: { id: string; rating: number; comments: string }) => api.patch(`/performance/${v.id}/self`, { selfRating: v.rating, comments: v.comments }),
     onSuccess: () => {
-      showToast('New review cycle initiated', 'success');
-      qc.invalidateQueries({ queryKey: ['performance'] });
-    }
+      refresh();
+      showToast('Self-review submitted', 'success');
+    },
+    onError,
+  });
+  const manager = useMutation({
+    mutationFn: async (v: { id: string; rating: number; comments: string }) => api.patch(`/performance/${v.id}/manager`, { managerRating: v.rating, comments: v.comments }),
+    onSuccess: () => {
+      refresh();
+      showToast('Review completed', 'success');
+    },
+    onError,
+  });
+  const openCycle = useMutation({
+    mutationFn: async () => (await api.post('/performance/cycle', { cycleName })).data,
+    onSuccess: (d: any) => {
+      setCycleName('');
+      refresh();
+      showToast(`Cycle opened for ${d.created} employee(s)${d.employeesWithoutManager ? ` — ${d.employeesWithoutManager} have no manager assigned` : ''}`, 'success');
+    },
+    onError,
   });
 
-  const submitSelf = useMutation({
-    mutationFn: async (id: string) => api.patch(`/performance/${id}/self`, { selfRating: parseInt(rating), comments }),
-    onSuccess: () => {
-      showToast('Self review submitted');
-      setSelectedReview(null);
-      qc.invalidateQueries({ queryKey: ['performance'] });
-    }
-  });
-
-  const submitManager = useMutation({
-    mutationFn: async (id: string) => api.patch(`/performance/${id}/manager`, { managerRating: parseInt(rating), comments }),
-    onSuccess: () => {
-      showToast('Manager review completed');
-      setSelectedReview(null);
-      qc.invalidateQueries({ queryKey: ['performance'] });
-    }
-  });
+  if (mine.isError) {
+    return <Card><CardContent className="py-8 text-muted-foreground">{getErrorMessage(mine.error)}</CardContent></Card>;
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Performance & OKRs</h2>
-          <p className="text-muted-foreground mt-2">Track quarterly reviews and goal progression.</p>
-        </div>
-        {user.data?.role === 'ADMIN' && (
-          <Button onClick={() => createCycle.mutate()} className="bg-indigo-600 hover:bg-indigo-700">
-            <Target size={16} className="mr-2" /> Start Review Cycle
-          </Button>
-        )}
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Performance</h2>
+        <p className="text-muted-foreground mt-2">Self-review first, then your manager completes the review.</p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      {role === 'ADMIN' && (
+        <Card className="bg-white/50 backdrop-blur-xl">
+          <CardHeader>
+            <CardTitle>Review cycles</CardTitle>
+            <CardDescription>Opening a cycle creates a review for every active employee, assigned to their manager.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2 max-w-md">
+              <Input placeholder="e.g. H2 2026" value={cycleName} onChange={(e) => setCycleName(e.target.value)} />
+              <Button onClick={() => openCycle.mutate()} disabled={cycleName.trim().length < 2 || openCycle.isPending}>
+                <Plus size={16} className="mr-1" /> Open cycle
+              </Button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {cycles.data?.map((c) => (
+                <div key={c.cycleName} className="rounded-xl border p-4 bg-white/40">
+                  <div className="font-semibold">{c.cycleName}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {c.completed}/{c.total} completed · {c.selfSubmitted} awaiting manager · {c.draft} awaiting self-review
+                  </div>
+                  <div className="h-2 mt-2 rounded bg-slate-200 overflow-hidden">
+                    <div className="h-full bg-emerald-500" style={{ width: `${c.total ? (c.completed / c.total) * 100 : 0}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card className="bg-white/50 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <TrendingUp size={18} className="text-indigo-500" /> My Reviews
+              <Target size={18} className="text-indigo-500" /> My reviews
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {myReviews.data?.map((review: any) => (
-              <div key={review.id} className="border p-4 rounded-xl bg-white/60">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-semibold">{review.cycleName}</h3>
-                  <Badge variant="secondary">{review.status}</Badge>
+            {mine.data?.map((r) => (
+              <div key={r.id} className="rounded-xl border p-4 bg-white/40">
+                <div className="flex justify-between">
+                  <div className="font-semibold">{r.cycleName}</div>
+                  <Badge variant="outline">{statusLabel[r.status]}</Badge>
                 </div>
-                
-                {review.status === 'DRAFT' && (
-                  <div className="mt-4">
-                    <p className="text-sm text-muted-foreground mb-2">Please submit your self-evaluation:</p>
-                    <Select onValueChange={setRating}>
-                      <SelectTrigger className="mb-2"><SelectValue placeholder="Rating (1-5)" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 - Needs Improvement</SelectItem>
-                        <SelectItem value="3">3 - Meets Expectations</SelectItem>
-                        <SelectItem value="5">5 - Exceeds Expectations</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Textarea 
-                      placeholder="Summary of achievements..." 
-                      className="mb-2"
-                      onChange={(e: any) => setComments(e.target.value)}
-                    />
-                    <Button onClick={() => submitSelf.mutate(review.id)} size="sm" className="w-full">
-                      Submit Self Review
-                    </Button>
-                  </div>
-                )}
-                
-                {review.status !== 'DRAFT' && (
-                  <div className="text-sm space-y-2 mt-2 bg-slate-50 p-3 rounded-md">
-                    <div><strong>Self Rating:</strong> {review.selfRating}/5</div>
-                    {review.status === 'COMPLETED' && (
-                      <div><strong>Manager Rating:</strong> {review.managerRating}/5</div>
-                    )}
-                  </div>
-                )}
+                <div className="text-sm text-muted-foreground">Reviewer: {r.reviewer ? `${r.reviewer.firstName} ${r.reviewer.lastName}` : 'Not assigned'}</div>
+                {r.selfRating && <div className="text-sm mt-2">Self: {r.selfRating}/5 — {r.selfComments}</div>}
+                {r.status === 'COMPLETED' && <div className="text-sm mt-1">Manager: {r.managerRating}/5 — {r.managerComments}</div>}
+                {r.status === 'DRAFT' && <ReviewForm submitLabel="Submit self-review" busy={self.isPending} onSubmit={(rating, comments) => self.mutate({ id: r.id, rating, comments })} />}
               </div>
             ))}
-            {!myReviews.data?.length && <p className="text-muted-foreground text-sm">No reviews found.</p>}
+            {!mine.isLoading && !mine.data?.length && <div className="text-muted-foreground text-sm">No reviews yet.</div>}
           </CardContent>
         </Card>
 
-        {(user.data?.role === 'ADMIN' || user.data?.role === 'MANAGER') && (
+        {(role === 'ADMIN' || role === 'MANAGER') && (
           <Card className="bg-white/50 backdrop-blur-xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <CheckCircle2 size={18} className="text-emerald-500" /> Team Reviews Pending
+                <Users size={18} className="text-emerald-500" /> My team
               </CardTitle>
-              <CardDescription>Reviews submitted by your reports needing your evaluation.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {teamReviews.data?.map((review: any) => (
-                <div key={review.id} className="border p-4 rounded-xl bg-white/60">
-                  <div className="font-semibold">{review.employee.firstName} {review.employee.lastName}</div>
-                  <div className="text-sm text-muted-foreground mb-4">{review.cycleName}</div>
-                  
-                  <div className="text-sm bg-slate-50 p-3 rounded-md mb-4 italic">
-                    "{review.comments}" - (Self Rating: {review.selfRating}/5)
+              {team.data?.map((r) => (
+                <div key={r.id} className="rounded-xl border p-4 bg-white/40">
+                  <div className="flex justify-between">
+                    <div className="font-semibold">
+                      {r.employee?.firstName} {r.employee?.lastName} · {r.cycleName}
+                    </div>
+                    <Badge variant="outline">{statusLabel[r.status]}</Badge>
                   </div>
-
-                  <Select onValueChange={setRating}>
-                    <SelectTrigger className="mb-2"><SelectValue placeholder="Manager Rating (1-5)" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1 - Needs Improvement</SelectItem>
-                      <SelectItem value="3">3 - Meets Expectations</SelectItem>
-                      <SelectItem value="5">5 - Exceeds Expectations</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Textarea 
-                    placeholder="Manager feedback..." 
-                    className="mb-2"
-                    onChange={(e: any) => setComments(e.target.value)}
-                  />
-                  <Button onClick={() => submitManager.mutate(review.id)} size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700">
-                    Submit Evaluation
-                  </Button>
+                  {r.selfRating && <div className="text-sm mt-2">Self: {r.selfRating}/5 — {r.selfComments}</div>}
+                  {r.status === 'COMPLETED' && <div className="text-sm mt-1">You: {r.managerRating}/5 — {r.managerComments}</div>}
+                  {r.status === 'SELF_SUBMITTED' && <ReviewForm submitLabel="Complete review" busy={manager.isPending} onSubmit={(rating, comments) => manager.mutate({ id: r.id, rating, comments })} />}
                 </div>
               ))}
-              {!teamReviews.data?.length && <p className="text-muted-foreground text-sm">No pending team reviews.</p>}
+              {!team.isLoading && !team.data?.length && <div className="text-muted-foreground text-sm">No team reviews assigned to you.</div>}
             </CardContent>
           </Card>
         )}

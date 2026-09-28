@@ -1,9 +1,11 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": ["js", "mjs", "json", "ts"],
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
-  }
+    "^.+\\.(t|j|mj)s$": ["ts-jest", { "tsconfig": { "allowJs": true, "module": "commonjs", "moduleResolution": "node10", "resolvePackageJsonExports": false, "esModuleInterop": true, "isolatedModules": true } }]
+  },
+  "transformIgnorePatterns": ["node_modules/(?!(@scure|@noble|otplib|@otplib|@faker-js|htmlparser2|domhandler|domutils|dom-serializer|domelementtype|entities|content-disposition|@fastify/static)/)"],
+  "testTimeout": 30000
 }

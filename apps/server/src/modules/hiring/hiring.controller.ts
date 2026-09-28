@@ -1,98 +1,97 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request, UsePipes, Patch, Query, ForbiddenException, Req, Res, BadRequestException } from '@nestjs/common';
-import type { FastifyRequest, FastifyReply } from 'fastify';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, StreamableFile } from '@nestjs/common';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import type { FastifyRequest } from 'fastify';
 import { HiringService } from './hiring.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
 import { RequiresPlan } from '../../common/decorators/plan.decorator';
-import { SubscriptionPlan } from '../../common/subscription/subscription-plans';
-import { createJobSchema } from './dto/job.dto';
-import type { CreateJobDto } from './dto/job.dto';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import type { ApplicationStatus } from '../../common/constants/domain';
+import {
+  createJobSchema,
+  listApplicationsSchema,
+  scheduleInterviewSchema,
+  updateApplicationSchema,
+  updateJobSchema,
+  type CreateJobDto,
+  type ListApplicationsQuery,
+  type ScheduleInterviewDto,
+  type UpdateJobDto,
+} from './dto/job.dto';
 
-@Controller()
-export class HiringController {
-  constructor(private readonly hiringService: HiringService) {}
+/** Public careers site: /careers/:slug */
+@ApiTags('Careers (public)')
+@Public()
+@Controller('careers')
+export class CareersController {
+  constructor(private readonly hiring: HiringService) {}
 
-  @Get('public/jobs')
-  async getPublicJobs() {
-    return this.hiringService.getPublicJobs();
+  @Get(':slug')
+  careers(@Param('slug') slug: string) {
+    return this.hiring.careers(slug);
   }
 
-  @Get('jobs')
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
-  @RequiresPlan(SubscriptionPlan.BASIC)
-  async getJobs(@Request() req: any) {
-    return this.hiringService.getJobs(req.user.tenantId);
-  }
-
-  @Post('jobs')
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
-  @RequiresPlan(SubscriptionPlan.BASIC)
-  @UsePipes(new ZodValidationPipe(createJobSchema))
-  async createJob(@Request() req: any, @Body() dto: CreateJobDto) {
-    if (req.user.role !== 'ADMIN') {
-      throw new ForbiddenException('Only admins can create jobs');
-    }
-    return this.hiringService.createJob(req.user.tenantId, dto);
-  }
-
-  @Patch('jobs/:id')
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
-  @RequiresPlan(SubscriptionPlan.BASIC)
-  async updateJobStatus(@Request() req: any, @Param('id') id: string, @Body('status') status: string) {
-    if (req.user.role !== 'ADMIN') {
-      throw new ForbiddenException('Admin only');
-    }
-    return this.hiringService.updateJobStatus(req.user.tenantId, id, status);
-  }
-
-  @Get('applications')
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
-  @RequiresPlan(SubscriptionPlan.BASIC)
-  async getApplications(@Request() req: any, @Query('jobId') jobId?: string) {
-    return this.hiringService.getApplications(req.user.tenantId, jobId);
-  }
-
-  @Post('applications')
-  async createApplication(@Req() req: FastifyRequest, @Res() res: FastifyReply) {
-    const data = await req.file();
-    if (!data) {
-       throw new BadRequestException('Multipart data missing');
-    }
-    const jobId = data.fields.jobId && 'value' in data.fields.jobId ? data.fields.jobId.value as string : '';
-    const candidateName = data.fields.candidateName && 'value' in data.fields.candidateName ? data.fields.candidateName.value as string : '';
-    const candidateEmail = data.fields.candidateEmail && 'value' in data.fields.candidateEmail ? data.fields.candidateEmail.value as string : '';
-
-    if (!jobId || !candidateName || !candidateEmail) {
-       throw new BadRequestException('Missing required fields');
-    }
-
-    const application = await this.hiringService.createApplication(jobId, candidateName, candidateEmail, data.filename, data.file);
-    res.send(application);
-  }
-
-  @Patch('applications/:id')
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
-  @RequiresPlan(SubscriptionPlan.BASIC)
-  async updateApplicationStatus(@Request() req: any, @Param('id') id: string, @Body('status') status: string) {
-    if (req.user.role !== 'ADMIN') {
-      throw new ForbiddenException('Admin only');
-    }
-    return this.hiringService.updateApplicationStatus(id, status);
-  }
-
-  @Post('applications/:id/schedule-interview')
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
-  @RequiresPlan(SubscriptionPlan.BASIC)
-  async scheduleInterview(
-    @Request() req: any,
-    @Param('id') id: string,
-    @Body('interviewerEmail') interviewerEmail?: string,
-  ) {
-    if (req.user.role !== 'ADMIN' && req.user.role !== 'MANAGER') {
-      throw new ForbiddenException('Admin or Manager only');
-    }
-    return this.hiringService.scheduleInterview(id, interviewerEmail ?? req.user.email);
+  /** multipart/form-data: resume (PDF/DOCX ≤ 5 MB), candidateName, candidateEmail, consent=true */
+  @Post(':slug/jobs/:jobId/apply')
+  @ApiConsumes('multipart/form-data')
+  @Throttle({ default: { limit: 5, ttl: 10 * 60_000 } })
+  async apply(@Param('slug') slug: string, @Param('jobId', ParseUUIDPipe) jobId: string, @Req() req: FastifyRequest) {
+    return this.hiring.apply(slug, jobId, await req.file());
   }
 }
 
+@ApiTags('Hiring')
+@ApiBearerAuth()
+@Controller('hiring')
+@RequiresPlan('BASIC')
+@Roles('ADMIN', 'MANAGER')
+export class HiringController {
+  constructor(private readonly hiring: HiringService) {}
+
+  @Get('jobs')
+  jobs(@CurrentUser() user: AuthUser) {
+    return this.hiring.jobs(user.tenantId);
+  }
+
+  @Post('jobs')
+  @Roles('ADMIN')
+  createJob(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(createJobSchema)) dto: CreateJobDto) {
+    return this.hiring.createJob(user.tenantId, dto);
+  }
+
+  @Patch('jobs/:id')
+  @Roles('ADMIN')
+  updateJob(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(updateJobSchema)) dto: UpdateJobDto) {
+    return this.hiring.updateJob(user.tenantId, id, dto);
+  }
+
+  @Get('applications')
+  applications(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(listApplicationsSchema)) q: ListApplicationsQuery) {
+    return this.hiring.applications(user.tenantId, q);
+  }
+
+  @Get('applications/:id/resume')
+  async resume(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    const { stream, mimeType, filename } = await this.hiring.resume(user.tenantId, id);
+    return new StreamableFile(stream, { type: mimeType, disposition: `attachment; filename="${filename}"` });
+  }
+
+  @Patch('applications/:id')
+  @Roles('ADMIN')
+  updateStatus(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(updateApplicationSchema)) dto: { status: ApplicationStatus }) {
+    return this.hiring.updateStatus(user, id, dto.status);
+  }
+
+  @Post('applications/:id/schedule-interview')
+  scheduleInterview(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(scheduleInterviewSchema)) dto: ScheduleInterviewDto) {
+    return this.hiring.scheduleInterview(user, id, dto);
+  }
+
+  @Post('applications/:id/rescreen')
+  @Roles('ADMIN')
+  @RequiresPlan('ENTERPRISE')
+  rescreen(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.hiring.rescreen(user, id);
+  }
+}

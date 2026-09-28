@@ -1,0 +1,7 @@
+aws_region          = "ap-south-1"
+environment         = "production"
+domain_name         = "hr.example.com"
+acm_certificate_arn = "arn:aws:acm:ap-south-1:123456789012:certificate/..."
+email_domain        = "example.com"
+s3_bucket_name      = "example-hrms-files-prod"
+alarm_email         = "ops@example.com"

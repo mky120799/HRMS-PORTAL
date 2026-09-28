@@ -7,6 +7,8 @@ import { Lock, Mail, Building2, KeyRound } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { getErrorMessage } from '../lib/errors';
+import { lastWorkspace } from '../lib/auth';
+import { passwordSchema } from '../lib/validation';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -14,12 +16,12 @@ import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
 
 const requestSchema = z.object({
-  tenantId: z.string().min(1, 'Tenant ID is required'),
+  tenantId: z.string().trim().min(1, 'Workspace is required'),
   email: z.string().email(),
 });
 
 const resetSchema = z.object({
-  password: z.string().min(8, 'Minimum 8 characters required'),
+  password: passwordSchema,
 });
 
 export function ResetPasswordPage() {
@@ -29,7 +31,7 @@ export function ResetPasswordPage() {
   const { showToast } = useToast();
   const [successMsg, setSuccessMsg] = useState('');
 
-  const reqForm = useForm<z.infer<typeof requestSchema>>({ resolver: zodResolver(requestSchema) });
+  const reqForm = useForm<z.infer<typeof requestSchema>>({ resolver: zodResolver(requestSchema), defaultValues: { tenantId: lastWorkspace() } });
   const resetForm = useForm<z.infer<typeof resetSchema>>({ resolver: zodResolver(resetSchema) });
 
   const onRequest = async (values: z.infer<typeof requestSchema>) => {

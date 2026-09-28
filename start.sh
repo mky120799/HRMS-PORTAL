@@ -1,37 +1,20 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# One-command local setup: dependencies, database, migrations, seed, dev servers.
+set -euo pipefail
+cd "$(dirname "$0")"
 
-# HRMS Portal Startup Script
-# This script ensures databases are up, project is bootstrapped, and all services are started.
+[ -f .env ] || { cp .env.example .env; echo "Created .env from .env.example"; }
 
-# 1. Start Infrastructure
-echo "🚀 Starting infrastructure (Postgres & MongoDB)..."
-docker-compose up -d
+echo "▶ Starting Postgres and Redis…"
+docker compose up -d --wait
 
-if [ $? -ne 0 ]; then
-    echo "❌ Error: Docker Compose failed to start. Ensure Docker is running."
-    exit 1
-fi
+[ -d node_modules ] || npm install
 
-# 2. Ensure Dependencies
-if [ ! -d "node_modules" ]; then
-    echo "📦 node_modules not found. Installing dependencies..."
-    npm install
-fi
+echo "▶ Applying database migrations…"
+npm run db:deploy
 
-# 3. Wait for DBs
-echo "⏳ Waiting for databases to initialize..."
-sleep 3
+echo "▶ Seeding development data (workspace: acme)…"
+npm run db:seed || true
 
-# 4. Bootstrap (Build shared + Prisma generate)
-echo "🛠️ Bootstrapping project (shared packages & prisma clients)..."
-npm run bootstrap
-
-if [ $? -ne 0 ]; then
-    echo "❌ Error: Bootstrap failed. Please check the logs above."
-    exit 1
-fi
-
-# 5. Run all services
-echo "✨ Starting HRMS Portal (Microservices + Frontend)..."
-echo "💡 Tip: All services run concurrently. Check the prefixed logs."
-npm run start:all
+echo "▶ Starting API (http://localhost:3000/api/docs) and web (http://localhost:5173)…"
+npm run dev

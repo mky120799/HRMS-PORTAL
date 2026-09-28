@@ -1,157 +1,134 @@
-import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Activity, Building2, Users, Search } from 'lucide-react';
+import { api, type Paged } from '../lib/api';
+import { getErrorMessage } from '../lib/errors';
+import { useToast } from '../lib/toast';
+import { fmtDate } from '../lib/format';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { getAuth } from '../lib/auth';
-import { Building2, Users, DollarSign, Activity, Ban, CheckCircle } from 'lucide-react';
-import { Navigate } from 'react-router-dom';
+import { Input } from '../components/ui/input';
 
 type Tenant = {
   id: string;
   name: string;
+  slug: string;
+  isActive: boolean;
   createdAt: string;
+  subscriptionPlan: string;
   subscriptionStatus: string;
-  _count: {
-    users: number;
-    employees: number;
-  };
+  trialEndsAt: string | null;
+  _count: { users: number; employees: number };
 };
 
+/** Platform operator console. Shows tenant metadata only — never customers' employee data. */
 export function SuperAdminPage() {
-  const auth = getAuth();
-  
-  // Protect route
-  if (auth?.user.role !== 'SUPER_ADMIN') {
-    return <Navigate to="/dashboard" replace />;
-  }
+  const qc = useQueryClient();
+  const { showToast } = useToast();
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
 
-  // Use react-query to fetch global data. In reality, we'd need a super-admin specific controller.
-  const { data: tenants, isLoading } = useQuery({
-    queryKey: ['superadmin', 'tenants'],
-    queryFn: async () => {
-      // MOCK DATA for demonstration, since we haven't built the super-admin API endpoint yet
-      return [
-        { id: '1', name: 'Acme Corp', createdAt: '2026-01-15', subscriptionStatus: 'ACTIVE', _count: { users: 2, employees: 45 } },
-        { id: '2', name: 'Globex Inc', createdAt: '2026-03-22', subscriptionStatus: 'TRIAL', _count: { users: 1, employees: 12 } },
-        { id: '3', name: 'Initech', createdAt: '2026-06-10', subscriptionStatus: 'PAST_DUE', _count: { users: 3, employees: 150 } },
-        { id: '4', name: 'Umbrella Corp', createdAt: '2025-11-05', subscriptionStatus: 'CANCELED', _count: { users: 1, employees: 8 } },
-      ] as Tenant[];
+  const tenants = useQuery({
+    queryKey: ['platform', 'tenants', search, page],
+    queryFn: async () => (await api.get<Paged<Tenant>>('/platform/tenants', { params: { search: search || undefined, page, pageSize: 25 } })).data,
+  });
+  const setActive = useMutation({
+    mutationFn: async (t: Tenant) => api.patch(`/platform/tenants/${t.id}`, { isActive: !t.isActive }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['platform'] });
+      showToast('Tenant updated', 'success');
     },
+    onError: (e) => showToast(getErrorMessage(e), 'error'),
   });
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'ACTIVE': return <Badge className="bg-emerald-500 hover:bg-emerald-600">Active</Badge>;
-      case 'TRIAL': return <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-200">Trial</Badge>;
-      case 'PAST_DUE': return <Badge variant="destructive">Past Due</Badge>;
-      default: return <Badge variant="outline" className="text-slate-500">Canceled</Badge>;
-    }
-  };
-
-  const activeTenants = tenants?.filter(t => t.subscriptionStatus === 'ACTIVE').length || 0;
-  const trialTenants = tenants?.filter(t => t.subscriptionStatus === 'TRIAL').length || 0;
-  const mrr = activeTenants * 299; // Assuming $299/mo standard plan
+  const items = tenants.data?.items ?? [];
+  const paying = items.filter((t) => t.subscriptionStatus === 'ACTIVE').length;
 
   return (
-    <div className="space-y-8 py-6">
+    <div className="space-y-6 py-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-          <Activity className="text-indigo-600" />
-          Global Command Center
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <Activity className="text-indigo-600" /> Platform
         </h1>
-        <p className="text-muted-foreground mt-1">
-          Super Admin dashboard for monitoring all tenants, revenue, and system health.
-        </p>
+        <p className="text-muted-foreground mt-1">All workspaces. Revenue metrics live in the Stripe dashboard.</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border/50 bg-white/50 backdrop-blur-xl">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue (MRR)</CardTitle>
-            <DollarSign className="h-4 w-4 text-emerald-500" />
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2"><Building2 size={14} /> Workspaces</CardDescription>
+            <CardTitle className="text-3xl">{tenants.data?.total ?? '—'}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${mrr.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">+12% from last month</p>
-          </CardContent>
         </Card>
-        
-        <Card className="border-border/50 bg-white/50 backdrop-blur-xl">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Tenants</CardTitle>
-            <Building2 className="h-4 w-4 text-indigo-500" />
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Paying (this page)</CardDescription>
+            <CardTitle className="text-3xl">{paying}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{activeTenants}</div>
-            <p className="text-xs text-muted-foreground">{trialTenants} currently in trial</p>
-          </CardContent>
         </Card>
-
-        <Card className="border-border/50 bg-white/50 backdrop-blur-xl">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-blue-500" />
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2"><Users size={14} /> Employees (this page)</CardDescription>
+            <CardTitle className="text-3xl">{items.reduce((n, t) => n + t._count.employees, 0)}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {tenants?.reduce((acc, t) => acc + t._count.users, 0) || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">Admins & Managers</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 bg-white/50 backdrop-blur-xl">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">System Health</CardTitle>
-            <CheckCircle className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">Operational</div>
-            <p className="text-xs text-muted-foreground">All systems go</p>
-          </CardContent>
         </Card>
       </div>
 
-      <Card className="border-border/50 bg-white/50 backdrop-blur-xl">
-        <CardHeader>
-          <CardTitle>Registered Tenants</CardTitle>
-          <CardDescription>Manage all organizations currently using the HRMS platform.</CardDescription>
+      <Card className="overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Workspaces</CardTitle>
+          <div className="relative w-64">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-9" placeholder="Search name or slug" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Organization Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Registered</TableHead>
-                <TableHead className="text-right">Employees</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="pl-6">Workspace</TableHead>
+                <TableHead>Plan</TableHead>
+                <TableHead>Users / Employees</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="pr-6 text-right">Access</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center h-24">Loading tenants...</TableCell>
+              {items.map((t) => (
+                <TableRow key={t.id}>
+                  <TableCell className="pl-6">
+                    <div className="font-medium">{t.name}</div>
+                    <div className="text-xs text-muted-foreground">{t.slug}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{t.subscriptionPlan}</Badge> <span className="text-xs text-muted-foreground">{t.subscriptionStatus}</span>
+                  </TableCell>
+                  <TableCell>
+                    {t._count.users} / {t._count.employees}
+                  </TableCell>
+                  <TableCell>{fmtDate(t.createdAt)}</TableCell>
+                  <TableCell className="pr-6 text-right">
+                    <Button
+                      size="sm"
+                      variant={t.isActive ? 'outline' : 'default'}
+                      className={t.isActive ? 'text-red-600' : ''}
+                      onClick={() => window.confirm(`${t.isActive ? 'Suspend' : 'Reactivate'} ${t.name}?`) && setActive.mutate(t)}
+                    >
+                      {t.isActive ? 'Suspend' : 'Reactivate'}
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              ) : (
-                tenants?.map((tenant) => (
-                  <TableRow key={tenant.id}>
-                    <TableCell className="font-medium">{tenant.name}</TableCell>
-                    <TableCell>{getStatusBadge(tenant.subscriptionStatus)}</TableCell>
-                    <TableCell className="text-muted-foreground">{new Date(tenant.createdAt).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">{tenant._count.employees}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                        <Ban size={14} className="mr-1" /> Suspend
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
+              ))}
             </TableBody>
           </Table>
+          {(tenants.data?.totalPages ?? 1) > 1 && (
+            <div className="flex justify-end gap-2 p-4">
+              <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <Button size="sm" variant="outline" disabled={page >= (tenants.data?.totalPages ?? 1)} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

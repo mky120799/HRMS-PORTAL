@@ -1,21 +1,21 @@
-import { Controller, Get, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { CurrentTenant, CurrentUser, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
+import type { TenantSnapshot } from '../../common/tenant/tenant-context.service';
 import { RequiresPlan } from '../../common/decorators/plan.decorator';
-import { SubscriptionPlan } from '../../common/subscription/subscription-plans';
 
+@ApiTags('Analytics')
+@ApiBearerAuth()
 @Controller('analytics')
-@UseGuards(JwtAuthGuard, RolesGuard, SubscriptionGuard)
-@RequiresPlan(SubscriptionPlan.BUSINESS)
+@RequiresPlan('BUSINESS')
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(private readonly analytics: AnalyticsService) {}
 
   @Get('overview')
   @Roles('ADMIN', 'MANAGER')
-  async getOverview(@Request() req: any) {
-    return this.analyticsService.getOverview(req.user.tenantId);
+  overview(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantSnapshot) {
+    return this.analytics.overview(user.tenantId, tenant.timezone);
   }
 }

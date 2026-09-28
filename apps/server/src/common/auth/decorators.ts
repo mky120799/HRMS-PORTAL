@@ -14,3 +14,8 @@ export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
 export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext): AuthUser => {
   return ctx.switchToHttp().getRequest().user as AuthUser;
 });
+
+/** Injects the cached tenant snapshot loaded by TenantAccessGuard. */
+export const CurrentTenant = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
+  return ctx.switchToHttp().getRequest().tenant;
+});

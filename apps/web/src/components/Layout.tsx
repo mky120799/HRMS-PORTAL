@@ -17,8 +17,10 @@ import {
   ShieldAlert,
   Shield,
   Activity,
+  Wallet,
 } from "lucide-react";
 import { clearAuth, getAuth, hasRole } from "../lib/auth";
+import { api } from "../lib/api";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { cn } from "../lib/utils";
@@ -178,9 +180,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </NavLink>
           ) : null}
 
-          {auth?.user.role === "ADMIN" && (
-            <>
-              <NavLink
+          {(auth?.user.role === "ADMIN" || auth?.user.role === "MANAGER") && (
+            <NavLink
                 to="/hiring"
                 className={({ isActive }) =>
                   cn(
@@ -193,6 +194,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
               >
                 <Briefcase size={20} />
                 Hiring
+              </NavLink>
+          )}
+
+          {auth?.user.role === "ADMIN" && (
+            <>
+              <NavLink
+                to="/payroll"
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                    isActive
+                      ? "bg-primary text-white font-semibold"
+                      : "text-slate-400 hover:text-white hover:bg-white/5",
+                  )
+                }
+              >
+                <Wallet size={20} />
+                Payroll
               </NavLink>
               
               <NavLink
@@ -267,13 +286,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3 mb-4 text-slate-400 text-sm">
             <Building2 size={16} />
             <span className="overflow-hidden text-ellipsis whitespace-nowrap">
-              {auth?.user.tenantId}
+              {auth?.tenant?.name ?? auth?.tenant?.slug ?? "Workspace"}
             </span>
           </div>
           <Button
             variant="destructive"
             className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-400"
-            onClick={() => {
+            onClick={async () => {
+              await api.post("/auth/logout").catch(() => undefined); // revoke the refresh token server-side
               clearAuth();
               nav("/login");
             }}

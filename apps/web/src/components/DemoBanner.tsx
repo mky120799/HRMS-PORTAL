@@ -22,7 +22,7 @@ export function DemoBanner() {
       <div className="flex items-center gap-2.5 relative z-10">
         <Sparkles size={15} className="shrink-0 text-yellow-300" />
         <span className="font-medium">
-          You're exploring a <span className="font-bold">Business Edition</span> sandbox with sample data.
+          You're exploring your <span className="font-bold">full-access trial</span> with sample data.
           This is your own private workspace.
         </span>
       </div>

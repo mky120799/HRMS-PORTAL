@@ -1,34 +1,65 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request, UsePipes, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { EmployeesService } from './employees.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { EmployeeLimitGuard } from '../../common/guards/employee-limit.guard';
-import { createEmployeeSchema } from './dto/create-employee.dto';
-import type { CreateEmployeeDto } from './dto/create-employee.dto';
+import { CurrentUser, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
+  changeRoleSchema,
+  createEmployeeSchema,
+  listEmployeesSchema,
+  offboardSchema,
+  updateEmployeeSchema,
+  type CreateEmployeeDto,
+  type ListEmployeesQuery,
+  type UpdateEmployeeDto,
+} from './dto/create-employee.dto';
 
+@ApiTags('Employees')
+@ApiBearerAuth()
 @Controller('employees')
-@UseGuards(JwtAuthGuard)
 export class EmployeesController {
-  constructor(private readonly employeesService: EmployeesService) {}
+  constructor(private readonly employees: EmployeesService) {}
 
+  /** Company directory. Admins get full records; everyone else gets directory fields. */
   @Get()
-  async findAll(@Request() req: any) {
-    return this.employeesService.findAll(req.user.tenantId);
+  list(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(listEmployeesSchema)) q: ListEmployeesQuery) {
+    return this.employees.list(user, q);
   }
 
-  @Post()
-  @UseGuards(EmployeeLimitGuard)
-  @UsePipes(new ZodValidationPipe(createEmployeeSchema))
-  async create(@Request() req: any, @Body() dto: CreateEmployeeDto) {
-    return this.employeesService.create(req.user.tenantId, dto);
+  @Get('me')
+  me(@CurrentUser() user: AuthUser) {
+    return this.employees.me(user);
   }
 
   @Get(':id')
-  async findOne(@Request() req: any, @Param('id') id: string) {
-    const employee = await this.employeesService.findOne(req.user.tenantId, id);
-    if (!employee) {
-      throw new NotFoundException('Employee not found');
-    }
-    return employee;
+  findOne(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.employees.findOne(user, id);
+  }
+
+  @Post()
+  @Roles('ADMIN')
+  @UseGuards(EmployeeLimitGuard)
+  create(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(createEmployeeSchema)) dto: CreateEmployeeDto) {
+    return this.employees.create(user, dto);
+  }
+
+  @Patch(':id')
+  @Roles('ADMIN')
+  update(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(updateEmployeeSchema)) dto: UpdateEmployeeDto) {
+    return this.employees.update(user, id, dto);
+  }
+
+  @Post(':id/offboard')
+  @Roles('ADMIN')
+  offboard(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(offboardSchema)) dto: { exitDate: string }) {
+    return this.employees.offboard(user, id, dto.exitDate);
+  }
+
+  @Patch(':id/role')
+  @Roles('ADMIN')
+  changeRole(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(changeRoleSchema)) dto: { role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE' }) {
+    return this.employees.changeRole(user, id, dto.role);
   }
 }

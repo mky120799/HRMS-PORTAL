@@ -1,45 +1,52 @@
-import { Controller, Post, Get, Body, Req, Headers, UseGuards, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Post, Req } from '@nestjs/common';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { StripeService } from './stripe.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
+import type { AuthUser } from '../../common/auth/auth-user';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { PAID_PLANS, type PaidPlan } from '../../common/subscription/subscription-plans';
 
-@Controller('stripe')
-export class StripeController {
-  constructor(private readonly stripeService: StripeService) {}
+const checkoutSchema = z.object({ plan: z.enum(PAID_PLANS) });
+
+@ApiTags('Billing')
+@ApiBearerAuth()
+@Controller('billing')
+export class BillingController {
+  constructor(private readonly stripe: StripeService) {}
+
+  @Get('plans')
+  plans() {
+    return this.stripe.plans();
+  }
 
   @Post('checkout')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  async createCheckoutSession(
-    @Req() req: any,
-    @Body('priceId') priceId: string,
-    @Body('successUrl') successUrl: string,
-    @Body('cancelUrl') cancelUrl: string,
-  ) {
-    const tenantId = req.user.tenantId;
-    return this.stripeService.createCheckoutSession(tenantId, priceId, successUrl, cancelUrl);
+  checkout(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(checkoutSchema)) dto: { plan: PaidPlan }) {
+    return this.stripe.createCheckout(user, dto.plan);
   }
 
   @Post('portal')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  async createPortalSession(
-    @Req() req: any,
-    @Body('returnUrl') returnUrl: string,
-  ) {
-    const tenantId = req.user.tenantId;
-    return this.stripeService.createCustomerPortal(tenantId, returnUrl);
+  portal(@CurrentUser() user: AuthUser) {
+    return this.stripe.createPortal(user);
   }
+}
 
-  // Stripe Webhook Endpoint (No Auth Guard)
+@Controller('stripe')
+export class StripeWebhookController {
+  constructor(private readonly stripe: StripeService) {}
+
+  /** Authenticated by Stripe's signature, not a JWT. */
+  @Public()
+  @SkipThrottle()
   @Post('webhook')
-  async handleWebhook(
-    @Headers('stripe-signature') signature: string,
-    @Req() req: any,
-  ) {
-    // Fastify/NestJS raw body
-    const rawBody = req.rawBody;
-    return this.stripeService.handleWebhook(signature, rawBody);
+  @HttpCode(200)
+  @ApiExcludeEndpoint()
+  webhook(@Headers('stripe-signature') signature: string | undefined, @Req() req: RawBodyRequest<FastifyRequest>) {
+    return this.stripe.handleWebhook(signature, req.rawBody);
   }
 }

@@ -1,3 +1,4 @@
+# Local development dependencies. Run the API and web app with `npm run dev`.
 services:
   postgres:
     image: postgres:16-alpine
@@ -6,30 +7,24 @@ services:
       POSTGRES_PASSWORD: hrms
       POSTGRES_DB: hrms_db
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pg_hrms_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hrms -d hrms_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  mailhog:
-    image: mailhog/mailhog
-    ports:
-      - "1025:1025"
-      - "8025:8025"
+      retries: 10
 
 volumes:
   pg_hrms_data:

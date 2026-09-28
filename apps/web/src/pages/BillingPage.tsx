@@ -1,167 +1,129 @@
-import { useState } from 'react';
-import { getAuth } from '../lib/auth';
-import { useToast } from '../lib/toast';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { CreditCard, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react';
+import { api } from '../lib/api';
+import { getErrorMessage } from '../lib/errors';
+import { useToast } from '../lib/toast';
+import { fmtDate } from '../lib/format';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { CreditCard, CheckCircle2, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
-import { api } from '../lib/api';
+
+type Subscription = {
+  plan: string;
+  status: string;
+  effectivePlan: string;
+  trialEndsAt: string | null;
+  isTrialActive: boolean;
+  trialDaysRemaining: number;
+  employeeLimit: number | null;
+  activeEmployees: number;
+  hasBillingAccount: boolean;
+};
+
+const PLANS: { plan: 'BASIC' | 'BUSINESS' | 'ENTERPRISE'; seats: string; features: string[] }[] = [
+  { plan: 'BASIC', seats: 'Up to 50 employees', features: ['Leave & attendance', 'Payroll & payslips', 'Documents', 'Hiring pipeline'] },
+  { plan: 'BUSINESS', seats: 'Up to 250 employees', features: ['Everything in Basic', 'Performance reviews', 'Analytics dashboard'] },
+  { plan: 'ENTERPRISE', seats: 'Unlimited employees', features: ['Everything in Business', 'AI resume screening', 'AI HR assistant'] },
+];
 
 export function BillingPage() {
   const { showToast } = useToast();
-  const auth = getAuth();
-  const [loading, setLoading] = useState(false);
+  const [params] = useSearchParams();
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const { data: sub, isLoading: subLoading } = useQuery({
-    queryKey: ['subscription'],
-    queryFn: async () => (await api.get('/tenants/subscription')).data?.data ?? (await api.get('/tenants/subscription')).data,
-  });
+  const sub = useQuery({ queryKey: ['subscription'], queryFn: async () => (await api.get<Subscription>('/tenants/subscription')).data });
+  const available = useQuery({ queryKey: ['billing-plans'], queryFn: async () => (await api.get<{ plan: string; available: boolean }[]>('/billing/plans')).data });
 
-  const plan = sub?.plan ?? 'FREE';
-  const status = sub?.status ?? 'TRIAL';
-  const trialDaysRemaining = sub?.trialDaysRemaining ?? 0;
+  useEffect(() => {
+    if (params.get('status') === 'success') showToast('Payment received — your plan updates within a few seconds.', 'success');
+  }, [params, showToast]);
 
-  const handleCheckout = async () => {
-    setLoading(true);
+  const go = async (key: string, request: () => Promise<{ data: { url: string } }>) => {
+    setBusy(key);
     try {
-      // Mock price ID from Stripe dashboard
-      const priceId = 'price_1234567890'; 
-      const res = await api.post('/stripe/checkout', {
-        priceId,
-        successUrl: window.location.origin + '/billing?success=true',
-        cancelUrl: window.location.origin + '/billing?canceled=true',
-      });
-      window.location.href = res.data.url;
-    } catch (err: any) {
-      showToast('Failed to start checkout. Check Stripe configuration.', 'error');
-    } finally {
-      setLoading(false);
+      window.location.href = (await request()).data.url;
+    } catch (e) {
+      showToast(getErrorMessage(e), 'error');
+      setBusy(null);
     }
   };
 
-  const handleManageBilling = async () => {
-    setLoading(true);
-    try {
-      const res = await api.post('/stripe/portal', {
-        returnUrl: window.location.origin + '/billing',
-      });
-      window.location.href = res.data.url;
-    } catch (err: any) {
-      showToast('No active Stripe customer found to manage.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const s = sub.data;
+  const isPaid = s && (s.status === 'ACTIVE' || s.status === 'PAST_DUE');
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto py-6">
+    <div className="space-y-8 max-w-5xl mx-auto py-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Billing &amp; Subscription</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage your workspace subscription, view invoices, and update payment methods.
-        </p>
+        <h1 className="text-3xl font-bold tracking-tight">Billing & Subscription</h1>
+        <p className="text-muted-foreground mt-2">Payments are handled securely by Stripe.</p>
       </div>
 
-      {subLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="animate-spin text-muted-foreground" size={28} />
-        </div>
-      ) : (
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle className="flex justify-between items-center">
-              Current Plan
-              {status === 'ACTIVE' && (
-                <Badge className="bg-emerald-500 hover:bg-emerald-600">Active</Badge>
-              )}
-              {status === 'TRIAL' && (
-                <Badge variant="secondary" className="bg-amber-100 text-amber-800">Trial</Badge>
-              )}
-              {status === 'PAST_DUE' && (
-                <Badge variant="destructive">Past Due</Badge>
-              )}
-            </CardTitle>
-            <CardDescription>
-              Your organization is on the <strong>{plan.charAt(0) + plan.slice(1).toLowerCase()}</strong> plan.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-emerald-500" />
-                <span className="text-sm">Unlimited Employees</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-emerald-500" />
-                <span className="text-sm">AI Resume Parsing (Gemini)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-emerald-500" />
-                <span className="text-sm">Slack &amp; Google Integrations</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-emerald-500" />
-                <span className="text-sm">Advanced Payroll Exports</span>
-              </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard size={18} /> Current plan
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sub.isLoading ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="text-2xl font-bold">{s?.isTrialActive ? 'Free trial' : s?.plan}</div>
+              <Badge variant="outline">{s?.status}</Badge>
+              {s?.isTrialActive && <span className="text-sm text-muted-foreground">{s.trialDaysRemaining} day(s) left · ends {fmtDate(s.trialEndsAt)} · all features unlocked</span>}
+              {s?.status === 'PAST_DUE' && <span className="text-sm text-red-600">Payment failed — update your card to avoid losing access.</span>}
+              <span className="text-sm text-muted-foreground">
+                Seats: {s?.activeEmployees} / {s?.employeeLimit ?? 'unlimited'}
+              </span>
             </div>
-
-            {status === 'TRIAL' && (
-              <div className="bg-amber-50 text-amber-800 text-sm p-3 rounded-md flex items-start gap-2 border border-amber-200">
-                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                <p>Your trial expires in {trialDaysRemaining} days. Upgrade now to avoid interruption.</p>
-              </div>
-            )}
-
-            {status === 'PAST_DUE' && (
-              <div className="bg-red-50 text-red-800 text-sm p-3 rounded-md flex items-start gap-2 border border-red-200">
-                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                <p>Your last payment failed. Please update your payment method.</p>
-              </div>
-            )}
-          </CardContent>
-          <CardFooter className="bg-slate-50/50 border-t pt-4">
-            {status !== 'ACTIVE' ? (
-              <Button onClick={handleCheckout} disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700">
-                <CreditCard size={16} className="mr-2" />
-                {loading ? 'Processing...' : 'Upgrade Now'}
-              </Button>
-            ) : (
-              <Button onClick={handleManageBilling} disabled={loading} variant="outline" className="w-full">
-                <ExternalLink size={16} className="mr-2" />
-                {loading ? 'Processing...' : 'Manage Billing & Invoices'}
-              </Button>
-            )}
+          )}
+        </CardContent>
+        {s?.hasBillingAccount && (
+          <CardFooter>
+            <Button variant="outline" disabled={!!busy} onClick={() => go('portal', () => api.post('/billing/portal'))}>
+              <ExternalLink size={16} className="mr-2" /> Manage billing, invoices & payment method
+            </Button>
           </CardFooter>
-        </Card>
+        )}
+      </Card>
 
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle>Payment Method</CardTitle>
-            <CardDescription>Securely managed by Stripe</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {status === 'ACTIVE' ? (
-              <div className="flex items-center gap-3 p-3 border rounded-lg bg-slate-50">
-                <div className="bg-white p-2 rounded shadow-sm">
-                  <CreditCard className="text-slate-500" size={20} />
-                </div>
-                <div>
-                  <p className="font-medium text-sm">Visa ending in 4242</p>
-                  <p className="text-xs text-muted-foreground">Expires 12/2028</p>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-6 text-muted-foreground border-2 border-dashed rounded-lg">
-                <CreditCard size={32} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No payment method on file</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-6 md:grid-cols-3">
+        {PLANS.map((p) => {
+          const current = isPaid && s?.plan === p.plan;
+          const purchasable = available.data?.find((a) => a.plan === p.plan)?.available;
+          return (
+            <Card key={p.plan} className={current ? 'ring-2 ring-indigo-500' : ''}>
+              <CardHeader>
+                <CardTitle>{p.plan.charAt(0) + p.plan.slice(1).toLowerCase()}</CardTitle>
+                <CardDescription>{p.seats}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {p.features.map((f) => (
+                  <div key={f} className="flex items-center gap-2 text-sm">
+                    <CheckCircle2 size={14} className="text-emerald-500" /> {f}
+                  </div>
+                ))}
+              </CardContent>
+              <CardFooter>
+                {current ? (
+                  <Badge>Current plan</Badge>
+                ) : isPaid ? (
+                  <Button variant="outline" className="w-full" disabled={!!busy} onClick={() => go('portal', () => api.post('/billing/portal'))}>
+                    Change plan
+                  </Button>
+                ) : (
+                  <Button className="w-full" disabled={!purchasable || !!busy} onClick={() => go(p.plan, () => api.post('/billing/checkout', { plan: p.plan }))}>
+                    {busy === p.plan ? <Loader2 className="animate-spin" size={16} /> : purchasable ? 'Subscribe' : 'Unavailable'}
+                  </Button>
+                )}
+              </CardFooter>
+            </Card>
+          );
+        })}
       </div>
-      )}
     </div>
   );
 }

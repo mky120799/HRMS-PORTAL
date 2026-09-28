@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, type Paged } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
@@ -21,10 +21,7 @@ export function AuditLogsPage() {
 
   const { data: logs, isLoading } = useQuery<AuditLog[]>({
     queryKey: ['audit', 'logs'],
-    queryFn: async () => {
-      const res = await api.get('/audit?limit=50');
-      return res.data;
-    },
+    queryFn: async () => (await api.get<Paged<AuditLog>>('/audit', { params: { pageSize: 100 } })).data.items,
   });
 
   const getActionBadge = (action: string) => {

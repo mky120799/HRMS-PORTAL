@@ -1,8 +1,29 @@
 node_modules
 dist
-.env
-.env.local
-*.log
-.DS_Store
 coverage
 .turbo
+*.log
+.DS_Store
+*.tsbuildinfo
+
+# Secrets — only the *.example files are committed
+.env
+.env.*
+!.env.example
+!.env.production.example
+apps/**/.env
+!apps/**/.env.example
+
+# Local file storage (development only; production uses S3)
+apps/server/storage
+apps/server/uploads
+
+# Terraform
+infrastructure/terraform/.terraform
+infrastructure/terraform/*.tfstate*
+infrastructure/terraform/terraform.tfvars
+infrastructure/terraform/backend.hcl
+
+# Playwright
+apps/e2e/test-results
+apps/e2e/playwright-report

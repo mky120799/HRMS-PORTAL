@@ -101,7 +101,7 @@ export class AuthService {
 
     await this.audit.log({ tenantId: tenant.id, userId: user.id, action: 'SIGNUP', resource: 'tenants', resourceId: tenant.id, ipAddress: meta.ip, userAgent: meta.userAgent });
     const session = await this.issueSession(user);
-    return { ...session, isNewTenant: true, tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name } };
+    return { ...session, isNewTenant: true };
   }
 
   // ─── Login ──────────────────────────────────────────────────────────────────
@@ -166,6 +166,7 @@ export class AuthService {
       await this.recordFailedLogin(user, meta);
       throw new UnauthorizedException('Invalid 2FA code');
     }
+    await this.twoFactor.upgradeLegacySecret(user.id, user.twoFactorSecret);
     await this.audit.log({ tenantId: user.tenantId, userId: user.id, action: 'LOGIN', resource: 'auth', ipAddress: meta.ip, userAgent: meta.userAgent, newValues: { method: '2fa' } });
     return this.issueSession(user);
   }
@@ -178,7 +179,10 @@ export class AuthService {
    * means a stolen token stops working as soon as the real user refreshes.
    */
   async issueSession(user: User) {
-    const employee = await this.prisma.employee.findUnique({ where: { userId: user.id }, select: { id: true } });
+    const [employee, tenant] = await Promise.all([
+      this.prisma.employee.findUnique({ where: { userId: user.id }, select: { id: true } }),
+      this.prisma.tenant.findUniqueOrThrow({ where: { id: user.tenantId }, select: { id: true, slug: true, name: true } }),
+    ]);
     const accessToken = this.tokens.sign('access', {
       sub: user.id,
       tenantId: user.tenantId,
@@ -200,6 +204,7 @@ export class AuthService {
       tokenType: 'Bearer',
       expiresIn: 15 * 60,
       user: { ...this.publicUser(user), employeeId: employee?.id ?? null },
+      tenant,
     };
   }
 

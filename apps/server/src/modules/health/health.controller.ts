@@ -29,7 +29,7 @@ export class HealthController {
   async ready() {
     const checks = await Promise.allSettled([
       this.withTimeout(this.prisma.$queryRaw`SELECT 1`),
-      this.withTimeout(this.queue.client.then((c) => c.ping())),
+      this.withTimeout(this.queue.client.then((c) => (c as unknown as { ping(): Promise<string> }).ping())),
     ]);
     const [database, redis] = checks.map((c) => (c.status === 'fulfilled' ? 'up' : 'down'));
     if (database !== 'up' || redis !== 'up') throw new ServiceUnavailableException({ message: 'Not ready', database, redis });

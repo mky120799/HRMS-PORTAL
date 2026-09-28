@@ -1,40 +1,27 @@
-import { useState } from 'react';
-import { getAuth } from '../lib/auth';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Building2, MessageSquare, ShieldCheck, CalendarDays, Save, Trash2, Plus } from 'lucide-react';
+import { api } from '../lib/api';
+import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
+import { fmtDay } from '../lib/format';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
-import {
-  Settings,
-  Slack,
-  CalendarDays,
-  Key,
-  Save,
-  CheckCircle,
-  Server,
-  Globe,
-  Bell,
-  ShieldCheck,
-} from 'lucide-react';
 
-function SettingSection({ icon, title, description, children }: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
+type Settings = { id: string; name: string; slug: string; timezone: string; whitelistedIps: string[]; slackWebhookUrl: string | null; slackHiringWebhookUrl: string | null };
+type Policy = { type: string; annualQuota: number; isPaid: boolean };
+type Holiday = { id: string; date: string; name: string };
+
+function Section({ icon, title, description, children }: { icon: React.ReactNode; title: string; description: string; children: React.ReactNode }) {
   return (
-    <Card className="border-border/50">
-      <CardHeader className="pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">{icon}</div>
-          <div>
-            <CardTitle className="text-base font-semibold">{title}</CardTitle>
-            <CardDescription className="text-sm">{description}</CardDescription>
-          </div>
-        </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          {icon} {title}
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">{children}</CardContent>
     </Card>
@@ -42,171 +29,180 @@ function SettingSection({ icon, title, description, children }: {
 }
 
 export function SettingsPage() {
+  const qc = useQueryClient();
   const { showToast } = useToast();
-  const auth = getAuth();
+  const onError = (e: unknown) => showToast(getErrorMessage(e), 'error');
+  const year = new Date().getFullYear();
 
-  const [slackWebhook, setSlackWebhook] = useState('');
-  const [slackHiringWebhook, setSlackHiringWebhook] = useState('');
-  const [whitelistedIps, setWhitelistedIps] = useState('');
-  const [saved, setSaved] = useState(false);
+  const settings = useQuery({ queryKey: ['settings'], queryFn: async () => (await api.get<Settings>('/tenants/settings')).data });
+  const policies = useQuery({ queryKey: ['leave-policies'], queryFn: async () => (await api.get<Policy[]>('/leave-policies')).data });
+  const holidays = useQuery({ queryKey: ['holidays', year], queryFn: async () => (await api.get<Holiday[]>('/holidays', { params: { year } })).data });
 
-  const handleSaveIntegrations = () => {
-    // In a real deployment, these would PATCH /api/v1/tenants/:id/settings
-    setSaved(true);
-    showToast('Settings saved. Restart the server to apply .env changes.', 'success');
-    setTimeout(() => setSaved(false), 3000);
-  };
+  const [general, setGeneral] = useState({ name: '', timezone: '', ips: '' });
+  const [slack, setSlack] = useState({ general: '', hiring: '' });
+  const [newPolicy, setNewPolicy] = useState<Policy>({ type: '', annualQuota: 0, isPaid: true });
+  const [newHoliday, setNewHoliday] = useState({ date: '', name: '' });
 
-  const envVars = [
-    { key: 'GEMINI_API_KEY', desc: 'AI chat + resume parsing', required: true },
-    { key: 'GOOGLE_CLIENT_ID', desc: 'Google SSO', required: false },
-    { key: 'GOOGLE_CLIENT_SECRET', desc: 'Google SSO', required: false },
-    { key: 'GOOGLE_CALLBACK_URL', desc: 'Google OAuth redirect URI', required: false },
-    { key: 'GOOGLE_CALENDAR_REFRESH_TOKEN', desc: 'Interview scheduling + Meet links', required: false },
-    { key: 'SLACK_WEBHOOK_URL', desc: 'Leave approval notifications', required: false },
-    { key: 'SLACK_HIRING_WEBHOOK_URL', desc: 'New application alerts', required: false },
-    { key: 'AWS_ACCESS_KEY_ID', desc: 'S3 resume storage', required: false },
-    { key: 'AWS_SECRET_ACCESS_KEY', desc: 'S3 resume storage', required: false },
-    { key: 'AWS_S3_BUCKET_NAME', desc: 'Resume storage bucket', required: false },
-  ];
+  useEffect(() => {
+    if (settings.data) setGeneral({ name: settings.data.name, timezone: settings.data.timezone, ips: settings.data.whitelistedIps.join(', ') });
+  }, [settings.data]);
+
+  const save = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => api.patch('/tenants/settings', body),
+    onSuccess: () => {
+      setSlack({ general: '', hiring: '' });
+      qc.invalidateQueries({ queryKey: ['settings'] });
+      showToast('Settings saved', 'success');
+    },
+    onError,
+  });
+  const upsertPolicy = useMutation({
+    mutationFn: async (p: Policy) => api.put('/leave-policies', p),
+    onSuccess: () => {
+      setNewPolicy({ type: '', annualQuota: 0, isPaid: true });
+      qc.invalidateQueries({ queryKey: ['leave-policies'] });
+      showToast('Leave policy saved', 'success');
+    },
+    onError,
+  });
+  const addHoliday = useMutation({
+    mutationFn: async () => api.post('/holidays', newHoliday),
+    onSuccess: () => {
+      setNewHoliday({ date: '', name: '' });
+      qc.invalidateQueries({ queryKey: ['holidays'] });
+    },
+    onError,
+  });
+  const removeHoliday = useMutation({
+    mutationFn: async (id: string) => api.delete(`/holidays/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['holidays'] }),
+    onError,
+  });
+
+  const s = settings.data;
+  const careersUrl = s ? `${window.location.origin}/careers/${s.slug}` : '';
 
   return (
-    <div className="space-y-8 max-w-3xl">
+    <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage integrations and system configuration for your HRMS instance.
-        </p>
+        <p className="text-muted-foreground mt-1">Workspace configuration. Every change is recorded in the audit log.</p>
       </div>
 
-      {/* Tenant Info */}
-      <SettingSection icon={<Server size={18} />} title="Workspace" description="Your organization's HRMS workspace details">
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <p className="text-muted-foreground mb-1">Tenant ID</p>
-            <code className="bg-muted px-2 py-1 rounded text-xs font-mono">{auth?.user.tenantId}</code>
+      <Section icon={<Building2 size={18} />} title="Workspace" description="Your people sign in with the workspace ID below.">
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <Label>Company name</Label>
+            <Input value={general.name} onChange={(e) => setGeneral((g) => ({ ...g, name: e.target.value }))} />
           </div>
-          <div>
-            <p className="text-muted-foreground mb-1">Your Role</p>
-            <Badge variant="secondary">{auth?.user.role}</Badge>
+          <div className="space-y-1">
+            <Label>Timezone (IANA)</Label>
+            <Input placeholder="Asia/Kolkata" value={general.timezone} onChange={(e) => setGeneral((g) => ({ ...g, timezone: e.target.value }))} />
           </div>
-          <div>
-            <p className="text-muted-foreground mb-1">Logged in as</p>
-            <p className="font-medium">{auth?.user.name}</p>
+          <div className="space-y-1">
+            <Label>Workspace ID (for sign-in)</Label>
+            <code className="block bg-muted px-2 py-2 rounded text-sm">{s?.slug}</code>
           </div>
-          <div>
-            <p className="text-muted-foreground mb-1">Email</p>
-            <p className="font-medium">{auth?.user.email}</p>
+          <div className="space-y-1">
+            <Label>Public careers page</Label>
+            <a className="block text-sm text-indigo-600 underline truncate py-2" href={careersUrl} target="_blank" rel="noreferrer">
+              {careersUrl}
+            </a>
           </div>
         </div>
-      </SettingSection>
+        <Button onClick={() => save.mutate({ name: general.name, timezone: general.timezone })} disabled={save.isPending}>
+          <Save size={16} className="mr-2" /> Save workspace
+        </Button>
+      </Section>
 
-      {/* Slack */}
-      <SettingSection icon={<Slack size={18} />} title="Slack Notifications" description="Send leave approvals and hiring alerts to Slack channels">
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 flex gap-2">
-          <Bell size={14} className="shrink-0 mt-0.5" />
-          <div>
-            Set <code className="font-mono bg-amber-100 px-1 rounded">SLACK_WEBHOOK_URL</code> and{' '}
-            <code className="font-mono bg-amber-100 px-1 rounded">SLACK_HIRING_WEBHOOK_URL</code> in your server{' '}
-            <code className="font-mono bg-amber-100 px-1 rounded">.env</code> file to activate Slack alerts.
-            Create a webhook at <strong>api.slack.com/apps</strong>.
-          </div>
+      <Section icon={<ShieldCheck size={18} />} title="Network access" description="Restrict access to office or VPN IP addresses. Leave empty to allow any network.">
+        <div className="space-y-1">
+          <Label>Allowed IPs or CIDR ranges (comma separated)</Label>
+          <Input placeholder="203.0.113.10, 198.51.100.0/24" value={general.ips} onChange={(e) => setGeneral((g) => ({ ...g, ips: e.target.value }))} />
+          <p className="text-xs text-muted-foreground">Your current address must be included, so you cannot lock yourself out.</p>
         </div>
-        <div className="space-y-2">
-          <Label>Leave Approvals Webhook URL</Label>
-          <Input placeholder="https://hooks.slack.com/services/..." value={slackWebhook} onChange={(e) => setSlackWebhook(e.target.value)} />
-          <p className="text-xs text-muted-foreground">Fires when a leave request is approved or rejected.</p>
-        </div>
-        <div className="space-y-2">
-          <Label>Hiring Channel Webhook URL</Label>
-          <Input placeholder="https://hooks.slack.com/services/..." value={slackHiringWebhook} onChange={(e) => setSlackHiringWebhook(e.target.value)} />
-          <p className="text-xs text-muted-foreground">Fires when a new candidate applies for a job.</p>
-        </div>
-      </SettingSection>
+        <Button
+          onClick={() => save.mutate({ whitelistedIps: general.ips.split(',').map((v) => v.trim()).filter(Boolean) })}
+          disabled={save.isPending}
+        >
+          <Save size={16} className="mr-2" /> Save allow-list
+        </Button>
+      </Section>
 
-      {/* Google Integrations */}
-      <SettingSection icon={<CalendarDays size={18} />} title="Google Workspace" description="SSO login and automatic Google Meet interview scheduling">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 flex gap-2">
-          <Globe size={14} className="shrink-0 mt-0.5" />
-          <div>
-            Configure these in <a href="https://console.cloud.google.com" target="_blank" rel="noopener" className="underline font-semibold">Google Cloud Console</a>.
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          {[
-            { label: 'Google SSO', desc: 'Sign in with Google on Login page', enabled: true },
-            { label: 'Google Meet', desc: 'Auto-generate Meet links for interviews', enabled: true },
-            { label: 'Calendar Events', desc: 'Create calendar invites for interviews', enabled: true },
-            { label: 'AI Resume Parsing', desc: 'Gemini parses resumes on application', enabled: true },
-          ].map((item) => (
-            <div key={item.label} className="flex items-start gap-2 p-3 rounded-lg border bg-card">
-              <CheckCircle size={16} className={item.enabled ? 'text-emerald-500 mt-0.5' : 'text-slate-300 mt-0.5'} />
-              <div>
-                <p className="font-medium text-sm">{item.label}</p>
-                <p className="text-xs text-muted-foreground">{item.desc}</p>
+      <Section icon={<MessageSquare size={18} />} title="Slack" description="Post leave decisions and new-application alerts to your own Slack channels.">
+        {(['general', 'hiring'] as const).map((k) => {
+          const current = k === 'general' ? s?.slackWebhookUrl : s?.slackHiringWebhookUrl;
+          const field = k === 'general' ? 'slackWebhookUrl' : 'slackHiringWebhookUrl';
+          return (
+            <div key={k} className="space-y-1">
+              <Label>{k === 'general' ? 'Leave approvals webhook' : 'Hiring webhook (defaults to the one above)'}</Label>
+              <div className="text-xs text-muted-foreground">{current ? `Configured: ${current}` : 'Not configured'}</div>
+              <div className="flex gap-2">
+                <Input placeholder="https://hooks.slack.com/services/…" value={slack[k]} onChange={(e) => setSlack((v) => ({ ...v, [k]: e.target.value }))} />
+                <Button variant="outline" disabled={!slack[k] || save.isPending} onClick={() => save.mutate({ [field]: slack[k] })}>
+                  Save
+                </Button>
+                {current && (
+                  <Button variant="ghost" className="text-red-600" onClick={() => save.mutate({ [field]: null })}>
+                    Remove
+                  </Button>
+                )}
               </div>
             </div>
-          ))}
-        </div>
-      </SettingSection>
+          );
+        })}
+      </Section>
 
-      {/* Environment Variables Reference */}
-      <SettingSection icon={<Key size={18} />} title="Environment Variables Reference" description="All required .env variables for full feature activation">
+      <Section icon={<CalendarDays size={18} />} title="Leave policies & holidays" description="Annual quotas in working days. Holidays are excluded from leave-day counts.">
         <div className="space-y-2">
-          {envVars.map((v) => (
-            <div key={v.key} className="flex items-center gap-3 py-1.5 border-b border-border/40 last:border-0">
-              <code className="text-xs font-mono bg-muted px-2 py-0.5 rounded min-w-[220px]">{v.key}</code>
-              <span className="text-xs text-muted-foreground flex-1">{v.desc}</span>
-              <Badge variant={v.required ? 'destructive' : 'secondary'} className="text-xs shrink-0">
-                {v.required ? 'Required' : 'Optional'}
-              </Badge>
+          {policies.data?.map((p) => (
+            <div key={p.type} className="flex items-center gap-3">
+              <span className="w-28 font-medium text-sm">{p.type}</span>
+              <Input
+                type="number"
+                min={0}
+                max={365}
+                className="w-24"
+                defaultValue={p.annualQuota}
+                disabled={!p.isPaid}
+                onBlur={(e) => Number(e.target.value) !== p.annualQuota && upsertPolicy.mutate({ ...p, annualQuota: Number(e.target.value) })}
+              />
+              <span className="text-xs text-muted-foreground">{p.isPaid ? 'days / year' : 'unpaid (deducted from salary)'}</span>
             </div>
           ))}
-        </div>
-      </SettingSection>
-
-      {/* Security */}
-      <SettingSection icon={<ShieldCheck size={18} />} title="Security" description="Current security configuration">
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          {[
-            { label: 'JWT Auth', active: true },
-            { label: 'Rate Limiting (100 req/min)', active: true },
-            { label: 'Role-Based Access Control', active: true },
-            { label: 'Audit Logging', active: true },
-            { label: 'Refresh Token Rotation', active: true },
-            { label: '2FA / TOTP', active: true },
-            { label: 'IP Whitelisting', active: true },
-            { label: 'GDPR Data Export', active: true },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center gap-2 p-2.5 rounded-lg border bg-card">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${item.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-              <span className={`text-xs ${item.active ? 'font-medium' : 'text-muted-foreground'}`}>{item.label}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 pt-4 border-t border-border/50">
-          <h4 className="font-medium text-sm mb-2">Network Security</h4>
-          <div className="space-y-2">
-            <Label>IP Whitelist (comma separated)</Label>
-            <Input 
-              placeholder="e.g. 192.168.1.1, 10.0.0.5" 
-              value={whitelistedIps} 
-              onChange={(e) => setWhitelistedIps(e.target.value)} 
-            />
-            <p className="text-xs text-muted-foreground">
-              Restrict login and API access to these specific IP addresses. Leave blank to allow any IP.
-            </p>
+          <div className="flex items-center gap-2 pt-2">
+            <Input placeholder="NEW_TYPE" className="w-32" value={newPolicy.type} onChange={(e) => setNewPolicy((p) => ({ ...p, type: e.target.value.toUpperCase() }))} />
+            <Input type="number" className="w-24" value={newPolicy.annualQuota} onChange={(e) => setNewPolicy((p) => ({ ...p, annualQuota: Number(e.target.value) }))} />
+            <label className="text-xs flex items-center gap-1">
+              <input type="checkbox" checked={newPolicy.isPaid} onChange={(e) => setNewPolicy((p) => ({ ...p, isPaid: e.target.checked }))} /> Paid
+            </label>
+            <Button size="sm" variant="outline" disabled={!newPolicy.type} onClick={() => upsertPolicy.mutate(newPolicy)}>
+              <Plus size={14} className="mr-1" /> Add type
+            </Button>
           </div>
         </div>
-      </SettingSection>
 
-      <div className="flex justify-end">
-        <Button onClick={handleSaveIntegrations} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-          <Save size={16} className="mr-2" />
-          {saved ? 'Saved!' : 'Save Settings'}
-        </Button>
-      </div>
+        <div className="border-t pt-4 space-y-2">
+          <div className="font-medium text-sm">Holidays {year}</div>
+          {holidays.data?.map((h) => (
+            <div key={h.id} className="flex items-center justify-between text-sm">
+              <span>
+                {fmtDay(h.date)} — {h.name}
+              </span>
+              <Button variant="ghost" size="icon" onClick={() => removeHoliday.mutate(h.id)}>
+                <Trash2 size={14} />
+              </Button>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <Input type="date" className="w-44" value={newHoliday.date} onChange={(e) => setNewHoliday((h) => ({ ...h, date: e.target.value }))} />
+            <Input placeholder="Holiday name" value={newHoliday.name} onChange={(e) => setNewHoliday((h) => ({ ...h, name: e.target.value }))} />
+            <Button size="sm" variant="outline" disabled={!newHoliday.date || !newHoliday.name} onClick={() => addHoliday.mutate()}>
+              <Plus size={14} />
+            </Button>
+          </div>
+        </div>
+      </Section>
     </div>
   );
 }
