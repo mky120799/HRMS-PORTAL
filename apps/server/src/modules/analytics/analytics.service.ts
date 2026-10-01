@@ -87,58 +87,92 @@ export class AnalyticsService {
 
       // Time to hire — avg and median days from application createdAt to HIRED event
       this.prisma.$queryRaw<{ avg_days: number | null; median_days: number | null }[]>`
+        WITH hired_at AS (
+          SELECT "applicationId", MIN("createdAt") AS "createdAt"
+          FROM "ApplicationEvent"
+          WHERE "tenantId" = ${tenantId}
+            AND type IN ('STAGE_CHANGED', 'STAGE_ROLLED_BACK')
+            AND metadata->>'toStatus' = 'HIRED'
+          GROUP BY "applicationId"
+        )
         SELECT
           ROUND(AVG(EXTRACT(EPOCH FROM (e."createdAt" - a."createdAt")) / 86400)::numeric, 1) AS avg_days,
           PERCENTILE_CONT(0.5) WITHIN GROUP (
             ORDER BY EXTRACT(EPOCH FROM (e."createdAt" - a."createdAt")) / 86400
           ) AS median_days
         FROM "Application" a
-        JOIN "ApplicationEvent" e
-          ON e."applicationId" = a.id
-          AND e."tenantId" = ${tenantId}
-          AND e.type = 'STAGE_CHANGED'
-          AND e.metadata->>'toStatus' = 'HIRED'
-        WHERE a."tenantId" = ${tenantId}
-          AND a.status = 'HIRED'`,
+        JOIN hired_at e ON e."applicationId" = a.id
+        WHERE a."tenantId" = ${tenantId}`,
 
-      // Median days spent in each stage — time between consecutive STAGE_CHANGED events
+      // Stage-entry events give the entered stage and the next entry closes its duration.
+      // Requiring APPLICATION_SUBMITTED deliberately excludes legacy backfilled rows that
+      // have no trustworthy historical timestamps.
       this.prisma.$queryRaw<{ stage: string; median_days: number }[]>`
-        WITH ordered AS (
+        WITH eligible AS (
+          SELECT DISTINCT "applicationId"
+          FROM "ApplicationEvent"
+          WHERE "tenantId" = ${tenantId} AND type = 'APPLICATION_SUBMITTED'
+        ), entries AS (
+          SELECT e."applicationId", e."createdAt", e.id,
+                 e.metadata->>'stageId' AS stage_id,
+                 e.metadata->>'stageName' AS stage
+          FROM "ApplicationEvent" e
+          JOIN eligible ok ON ok."applicationId" = e."applicationId"
+          WHERE e."tenantId" = ${tenantId} AND e.type = 'APPLICATION_SUBMITTED'
+          UNION ALL
+          SELECT e."applicationId", e."createdAt", e.id,
+                 e.metadata->>'toStageId' AS stage_id,
+                 e.metadata->>'toStageName' AS stage
+          FROM "ApplicationEvent" e
+          JOIN eligible ok ON ok."applicationId" = e."applicationId"
+          WHERE e."tenantId" = ${tenantId}
+            AND e.type IN ('STAGE_CHANGED', 'STAGE_ROLLED_BACK')
+        ), ordered AS (
           SELECT
             "applicationId",
-            metadata->>'fromStatus'                                       AS stage,
+            stage_id,
+            stage,
             EXTRACT(EPOCH FROM
-              LEAD("createdAt") OVER (PARTITION BY "applicationId" ORDER BY "createdAt")
+              LEAD("createdAt") OVER (PARTITION BY "applicationId" ORDER BY "createdAt", id)
               - "createdAt"
             ) / 86400                                                     AS days_in_stage
-          FROM "ApplicationEvent"
-          WHERE "tenantId" = ${tenantId}
-            AND type = 'STAGE_CHANGED'
+          FROM entries
         )
         SELECT
-          stage,
-          ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY days_in_stage)::numeric, 1) AS median_days
-        FROM ordered
-        WHERE stage IS NOT NULL AND days_in_stage IS NOT NULL
-        GROUP BY stage
-        ORDER BY MIN(CASE stage
-          WHEN 'APPLIED'    THEN 1
-          WHEN 'SCREENING'  THEN 2
-          WHEN 'INTERVIEW'  THEN 3
-          WHEN 'OFFERED'    THEN 4
-          ELSE 99 END)`,
+          o.stage,
+          ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY o.days_in_stage)::numeric, 1) AS median_days
+        FROM ordered o
+        LEFT JOIN "HiringStage" s ON s.id = o.stage_id AND s."tenantId" = ${tenantId}
+        WHERE o.stage IS NOT NULL AND o.days_in_stage IS NOT NULL
+        GROUP BY o.stage
+        ORDER BY MIN(s.position) NULLS LAST, o.stage`,
 
-      // Offer acceptance rate
-      this.prisma.application.groupBy({
-        by: ['status'],
-        where: { tenantId, status: { in: ['OFFERED', 'HIRED'] } },
-        _count: { _all: true },
-      }),
+      // Offer acceptance is cohort based: later rejection does not erase the offer.
+      this.prisma.$queryRaw<{ total_offered: bigint; hired_from_offer: bigint }[]>`
+        WITH offered AS (
+          SELECT "applicationId", MIN("createdAt") AS offered_at
+          FROM "ApplicationEvent"
+          WHERE "tenantId" = ${tenantId}
+            AND type IN ('STAGE_CHANGED', 'STAGE_ROLLED_BACK')
+            AND metadata->>'toStatus' = 'OFFERED'
+          GROUP BY "applicationId"
+        ), hired AS (
+          SELECT DISTINCT o."applicationId"
+          FROM offered o
+          JOIN "ApplicationEvent" e ON e."applicationId" = o."applicationId"
+            AND e."tenantId" = ${tenantId}
+            AND e.type IN ('STAGE_CHANGED', 'STAGE_ROLLED_BACK')
+            AND e.metadata->>'toStatus' = 'HIRED'
+            AND e."createdAt" >= o.offered_at
+        )
+        SELECT COUNT(*)::bigint AS total_offered,
+               COUNT(h."applicationId")::bigint AS hired_from_offer
+        FROM offered o
+        LEFT JOIN hired h ON h."applicationId" = o."applicationId"`,
     ]);
 
-    const offeredCount = offerRows.find((r) => r.status === 'OFFERED')?._count._all ?? 0;
-    const hiredFromOffer = offerRows.find((r) => r.status === 'HIRED')?._count._all ?? 0;
-    const totalOffered = offeredCount + hiredFromOffer;
+    const totalOffered = Number(offerRows[0]?.total_offered ?? 0);
+    const hiredFromOffer = Number(offerRows[0]?.hired_from_offer ?? 0);
 
     return {
       sourceOfHire: sourceRows.map((r) => ({

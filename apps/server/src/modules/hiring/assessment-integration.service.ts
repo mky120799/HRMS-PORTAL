@@ -73,27 +73,31 @@ export class AssessmentIntegrationService {
     if (!integration) throw new BadRequestException('Assessment integration is unavailable');
     if (!dto.externalId) throw new BadRequestException('externalId from the assessment provider is required');
     try {
-      const request = await this.prisma.assessmentRequest.create({
-        data: {
-          tenantId: user.tenantId,
-          applicationId,
-          integrationId: integration.id,
-          externalId: dto.externalId,
-          assessmentUrl: dto.assessmentUrl,
-          expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : undefined,
-        },
+      return await this.prisma.$transaction(async (tx) => {
+        const request = await tx.assessmentRequest.create({
+          data: {
+            tenantId: user.tenantId,
+            applicationId,
+            integrationId: integration.id,
+            externalId: dto.externalId,
+            assessmentUrl: dto.assessmentUrl,
+            expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : undefined,
+          },
+        });
+        await tx.applicationEvent.create({
+          data: {
+            tenantId: user.tenantId,
+            applicationId,
+            actorUserId: user.userId,
+            type: 'ASSESSMENT_REQUEST_LINKED',
+            metadata: { assessmentRequestId: request.id, integrationId: integration.id, provider: integration.provider, externalId: dto.externalId },
+          },
+        });
+        await tx.auditLog.create({
+          data: { tenantId: user.tenantId, userId: user.userId, action: 'ASSESSMENT_REQUEST_LINKED', resource: 'assessment-requests', resourceId: request.id, newValues: { applicationId, provider: integration.provider, externalId: dto.externalId } },
+        });
+        return request;
       });
-      await this.prisma.applicationEvent.create({
-        data: {
-          tenantId: user.tenantId,
-          applicationId,
-          actorUserId: user.userId,
-          type: 'ASSESSMENT_REQUEST_LINKED',
-          metadata: { assessmentRequestId: request.id, integrationId: integration.id, provider: integration.provider, externalId: dto.externalId },
-        },
-      });
-      await this.audit.log({ tenantId: user.tenantId, userId: user.userId, action: 'ASSESSMENT_REQUEST_LINKED', resource: 'assessment-requests', resourceId: request.id, newValues: { applicationId, provider: integration.provider, externalId: dto.externalId } });
-      return request;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('This provider assessment is already linked');
       throw error;

@@ -55,6 +55,7 @@ model Tenant {
   hiringStages       HiringStage[]
   applicationEvents  ApplicationEvent[]
   interviewFeedback  InterviewFeedback[]
+  hiringOutboxEvents HiringOutboxEvent[]
   assessmentIntegrations AssessmentIntegration[]
   assessmentRequests AssessmentRequest[]
   leaves             LeaveRequest[]
@@ -366,7 +367,10 @@ model Application {
   status                  String    @default("APPLIED") // APPLIED, SCREENING, INTERVIEW, OFFERED, HIRED, REJECTED
   interviewAt             DateTime?
   interviewerEmail        String?
-  interviewReminderSentAt DateTime? // set once reminder email is sent; prevents re-delivery
+  interviewDurationMinutes Int?
+  interviewLocation       String?
+  interviewScheduleVersion Int       @default(0)
+  interviewReminderSentAt DateTime? // set atomically when reminder outbox records are queued
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -376,12 +380,13 @@ model Application {
   assessmentRequests AssessmentRequest[]
   events             ApplicationEvent[]
   feedback           InterviewFeedback[]
+  outboxEvents       HiringOutboxEvent[]
 
   @@unique([jobId, candidateEmail])
   @@index([jobId])
   @@index([tenantId, status])
   @@index([tenantId, stageId])
-  @@index([tenantId, interviewAt]) // used by reminder cron
+  @@index([tenantId, interviewAt]) // used by the lifecycle-aware reminder scheduler
 }
 
 /// Tenant-configurable stage within the recruiting pipeline. `category`
@@ -506,16 +511,43 @@ model InterviewFeedback {
   @@index([tenantId, applicationId])
 }
 
+/// Durable side effects created in the same transaction as a hiring mutation.
+/// A leased dispatcher delivers email, RabbitMQ, and Slack work with retries.
+model HiringOutboxEvent {
+  id            String    @id @default(uuid())
+  tenantId      String
+  applicationId String?
+  eventKey      String
+  type          String    // EMAIL, HIRING_QUEUE, SLACK_NEW_APPLICATION
+  payload       Json
+  status        String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  attempts      Int       @default(0)
+  availableAt   DateTime  @default(now())
+  lockedAt      DateTime?
+  lastError     String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  application Application? @relation(fields: [applicationId], references: [id])
+
+  @@unique([tenantId, eventKey])
+  @@index([status, availableAt])
+  @@index([tenantId, applicationId])
+}
+
 model Notification {
   id              String    @id @default(uuid())
   tenantId        String
   channel         String // EMAIL, IN_APP
   title           String
   body            String // credential-bearing emails are stored redacted
-  status          String    @default("PENDING") // PENDING, QUEUED, SENT, FAILED, READ
+  status          String    @default("PENDING") // PENDING, QUEUED, PROCESSING, SENT, FAILED, READ
   recipientUserId String?
   recipientEmail  String?
   subject         String?
+  idempotencyKey  String?
   metadata        Json?
   error           String?
   sentAt          DateTime?
@@ -525,6 +557,7 @@ model Notification {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, recipientUserId])
+  @@unique([tenantId, idempotencyKey])
 }
 
 model AttendanceRecord {

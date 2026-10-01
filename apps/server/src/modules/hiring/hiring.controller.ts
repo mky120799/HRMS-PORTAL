@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, StreamableFile } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import type { RawBodyRequest } from '@nestjs/common';
@@ -26,6 +26,7 @@ import {
   createHiringStageSchema,
   moveApplicationSchema,
   updateHiringStageSchema,
+  reorderHiringStagesSchema,
   createAssessmentIntegrationSchema,
   createAssessmentRequestSchema,
   type CreateAssessmentIntegrationDto,
@@ -33,6 +34,7 @@ import {
   type CreateHiringStageDto,
   type MoveApplicationDto,
   type UpdateHiringStageDto,
+  type ReorderHiringStagesDto,
   type UpsertFeedbackDto,
 } from './dto/job.dto';
 
@@ -102,6 +104,12 @@ export class HiringController {
   @Roles('ADMIN')
   updateStage(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(updateHiringStageSchema)) dto: UpdateHiringStageDto) {
     return this.workflow.updateStage(user, id, dto);
+  }
+
+  @Put('stages/reorder')
+  @Roles('ADMIN')
+  reorderStages(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(reorderHiringStagesSchema)) dto: ReorderHiringStagesDto) {
+    return this.workflow.reorderStages(user, dto);
   }
 
   @Get('applications')

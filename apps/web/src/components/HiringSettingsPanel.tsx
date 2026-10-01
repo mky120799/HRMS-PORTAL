@@ -101,16 +101,22 @@ export function HiringSettingsPanel() {
     onError,
   });
 
+  const reorderStages = useMutation({
+    mutationFn: async (stageIds: string[]) => api.put('/hiring/stages/reorder', { stageIds }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['hiring-stages'] }),
+    onError,
+  });
+
   const sortedStages = [...(stages.data ?? [])].sort((a, b) => a.position - b.position);
 
   function moveStage(stage: Stage, dir: 'up' | 'down') {
     const sorted = sortedStages;
     const idx = sorted.findIndex((s) => s.id === stage.id);
-    const target = dir === 'up' ? sorted[idx - 1] : sorted[idx + 1];
-    if (!target) return;
-    // Swap positions
-    updateStage.mutate({ id: stage.id, position: target.position });
-    updateStage.mutate({ id: target.id, position: stage.position });
+    const targetIdx = dir === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= sorted.length) return;
+    const reordered = [...sorted];
+    [reordered[idx], reordered[targetIdx]] = [reordered[targetIdx], reordered[idx]];
+    reorderStages.mutate(reordered.map((item) => item.id));
   }
 
   return (
@@ -215,7 +221,7 @@ export function HiringSettingsPanel() {
                 <div className="flex flex-col">
                   <button
                     onClick={() => moveStage(stage, 'up')}
-                    disabled={idx === 0 || updateStage.isPending}
+                    disabled={idx === 0 || reorderStages.isPending}
                     className="text-slate-400 hover:text-slate-600 disabled:opacity-20"
                     title="Move up"
                   >
@@ -223,7 +229,7 @@ export function HiringSettingsPanel() {
                   </button>
                   <button
                     onClick={() => moveStage(stage, 'down')}
-                    disabled={idx === sortedStages.length - 1 || updateStage.isPending}
+                    disabled={idx === sortedStages.length - 1 || reorderStages.isPending}
                     className="text-slate-400 hover:text-slate-600 disabled:opacity-20"
                     title="Move down"
                   >

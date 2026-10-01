@@ -4,49 +4,39 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
-import { EmailService } from '../../common/email/email.service';
 import { EmailTemplates } from '../../common/email/templates';
-import { AuditService } from '../../common/audit/audit.service';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { fieldValue, readValidatedFile, RESUME_MIME_TYPES } from '../../common/files/file-validation';
 import { paginate, paged } from '../../common/validation/common.schemas';
 import { effectivePlan, planMeetsRequirement } from '../../common/subscription/subscription-plans';
-import { SlackService } from '../integrations/slack.service';
 import { AiService } from '../ai/ai.service';
-import { RabbitMqService, HIRING_QUEUE } from '../../common/messaging/rabbitmq.service';
 import { HiringWorkflowService } from './hiring-workflow.service';
 import { applySchema, type CreateJobDto, type ListApplicationsQuery, type ScheduleInterviewDto, type UpdateJobDto } from './dto/job.dto';
 import type { ApplicationStatus } from '../../common/constants/domain';
+import { HiringOutboxService } from './hiring-outbox.service';
+import { HiringInterviewService } from './hiring-interview.service';
 
 export { HIRING_QUEUE } from '../../common/messaging/rabbitmq.service';
 const RESUME_MAX_BYTES = 5 * 1024 * 1024;
-const NOTIFY_CANDIDATE: ApplicationStatus[] = ['SCREENING', 'OFFERED', 'HIRED', 'REJECTED'];
 
 const APPLICATION_FIELDS = {
   id: true, jobId: true, candidateName: true, candidateEmail: true, resumeFilename: true, status: true,
   source: true,
-  aiScore: true, aiReason: true, aiScoredAt: true, interviewAt: true, interviewerEmail: true, createdAt: true, updatedAt: true,
+  aiScore: true, aiReason: true, aiScoredAt: true, interviewAt: true, interviewerEmail: true,
+  interviewDurationMinutes: true, interviewLocation: true, createdAt: true, updatedAt: true,
   job: { select: { id: true, title: true, department: true } },
   stage: { select: { id: true, key: true, name: true, category: true, position: true } },
 } satisfies Prisma.ApplicationSelect;
-
-function googleCalendarUrl(title: string, start: Date, end: Date, details: string, location?: string) {
-  const f = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  const params = new URLSearchParams({ action: 'TEMPLATE', text: title, dates: `${f(start)}/${f(end)}`, details, ...(location ? { location } : {}) });
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
-}
 
 @Injectable()
 export class HiringService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
-    private readonly email: EmailService,
-    private readonly audit: AuditService,
-    private readonly slack: SlackService,
     private readonly ai: AiService,
-    private readonly rabbit: RabbitMqService,
     private readonly workflow: HiringWorkflowService,
+    private readonly outbox: HiringOutboxService,
+    private readonly interviews: HiringInterviewService,
   ) {}
 
   // ─── Public careers site ────────────────────────────────────────────────────
@@ -85,21 +75,47 @@ export class HiringService {
 
     let application;
     try {
-      application = await this.prisma.application.create({
-        data: {
+      application = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.application.create({
+          data: {
+            tenantId: job.tenantId,
+            jobId: job.id,
+            candidateName: parsed.data.candidateName,
+            candidateEmail: parsed.data.candidateEmail,
+            resumeFilename: file.originalName,
+            resumeKey: key,
+            resumeMimeType: file.mime,
+            source: parsed.data.source ?? 'CAREERS_SITE',
+            status: 'APPLIED',
+            stageId: initialStage.id,
+            events: { create: { tenantId: job.tenantId, type: 'APPLICATION_SUBMITTED', metadata: { stageId: initialStage.id, stageName: initialStage.name, source: parsed.data.source ?? 'CAREERS_SITE' } } },
+          },
+          select: { id: true },
+        });
+        await this.outbox.enqueueEmail(tx, {
           tenantId: job.tenantId,
-          jobId: job.id,
+          applicationId: created.id,
+          eventKey: `application-received:${created.id}`,
+          to: parsed.data.candidateEmail,
+          email: EmailTemplates.applicationReceived({ candidateName: parsed.data.candidateName, jobTitle: job.title, companyName: job.tenant.name }),
+        });
+        await this.outbox.enqueueSlackApplication(tx, {
+          tenantId: job.tenantId,
+          applicationId: created.id,
+          eventKey: `new-application:${created.id}`,
+          jobTitle: job.title,
           candidateName: parsed.data.candidateName,
-          candidateEmail: parsed.data.candidateEmail,
-          resumeFilename: file.originalName,
-          resumeKey: key,
-          resumeMimeType: file.mime,
-          source: parsed.data.source ?? 'CAREERS_SITE',
-          status: 'APPLIED',
-          stageId: initialStage.id,
-          events: { create: { tenantId: job.tenantId, type: 'APPLICATION_SUBMITTED', metadata: { stageId: initialStage.id, stageName: initialStage.name, source: parsed.data.source ?? 'CAREERS_SITE' } } },
-        },
-        select: { id: true },
+        });
+        if (this.ai.enabled && planMeetsRequirement(effectivePlan(job.tenant), 'ENTERPRISE')) {
+          await this.outbox.enqueueHiringJob(tx, {
+            tenantId: job.tenantId,
+            applicationId: created.id,
+            eventKey: `ai-screening:${created.id}:initial`,
+            jobType: 'screen',
+            payload: { applicationId: created.id, tenantId: job.tenantId },
+          });
+        }
+        return created;
       });
     } catch (e) {
       await this.storage.delete(key);
@@ -107,15 +123,6 @@ export class HiringService {
       throw e;
     }
 
-    if (this.ai.enabled && planMeetsRequirement(effectivePlan(job.tenant), 'ENTERPRISE')) {
-      await this.rabbit.publish(HIRING_QUEUE, 'screen', { applicationId: application.id, tenantId: job.tenantId });
-    }
-    await this.email.send({
-      tenantId: job.tenantId,
-      to: parsed.data.candidateEmail,
-      email: EmailTemplates.applicationReceived({ candidateName: parsed.data.candidateName, jobTitle: job.title, companyName: job.tenant.name }),
-    });
-    void this.slack.newApplication(job.tenantId, { jobTitle: job.title, candidateName: parsed.data.candidateName });
     return { applied: true, applicationId: application.id };
   }
 
@@ -164,17 +171,7 @@ export class HiringService {
   async updateStatus(user: AuthUser, id: string, status: ApplicationStatus) {
     const app = await this.findApplication(user.tenantId, id);
     if (app.status === status) return this.prisma.application.findUniqueOrThrow({ where: { id }, select: APPLICATION_FIELDS });
-    const updated = await this.workflow.moveToCategory(user, id, status);
-
-    if (NOTIFY_CANDIDATE.includes(status)) {
-      await this.email.send({
-        tenantId: user.tenantId,
-        to: app.candidateEmail,
-        email: EmailTemplates.applicationStatus({ candidateName: app.candidateName, jobTitle: app.job.title, companyName: app.tenant.name, status }),
-      });
-    }
-    await this.audit.log({ tenantId: user.tenantId, userId: user.userId, action: 'APPLICATION_STATUS', resource: 'hiring', resourceId: id, oldValues: { status: app.status }, newValues: { status } });
-    return updated;
+    return this.workflow.moveToCategory(user, id, status);
   }
 
   /**
@@ -183,48 +180,23 @@ export class HiringService {
    * No shared Google account is involved — no stored OAuth token to leak.
    */
   async scheduleInterview(user: AuthUser, id: string, dto: ScheduleInterviewDto) {
-    const app = await this.findApplication(user.tenantId, id);
-    const interviewerEmail = dto.interviewerEmail ?? user.email;
-    const interviewer = await this.prisma.user.findUnique({ where: { tenantId_email: { tenantId: user.tenantId, email: interviewerEmail } } });
-    if (!interviewer || !interviewer.isActive) throw new BadRequestException('The interviewer must be an active user in your workspace');
-
-    const start = new Date(dto.startsAt);
-    if (start.getTime() < Date.now()) throw new BadRequestException('Interview time must be in the future');
-    const end = new Date(start.getTime() + dto.durationMinutes * 60_000);
-
-    if (app.status !== 'INTERVIEW') await this.workflow.moveToCategory(user, id, 'INTERVIEW');
-    const updated = await this.prisma.application.update({
-      where: { id },
-      data: { status: 'INTERVIEW', interviewAt: start, interviewerEmail, interviewReminderSentAt: null },
-      select: APPLICATION_FIELDS,
-    });
-    const eventType = dto.isReschedule ? 'INTERVIEW_RESCHEDULED' : 'INTERVIEW_SCHEDULED';
-    await this.prisma.applicationEvent.create({
-      data: {
-        tenantId: user.tenantId,
-        applicationId: id,
-        actorUserId: user.userId,
-        type: eventType,
-        metadata: { startsAt: start.toISOString(), durationMinutes: dto.durationMinutes, interviewerEmail, location: dto.location ?? null, isReschedule: dto.isReschedule },
-      },
-    });
-
-    const title = `Interview: ${app.candidateName} — ${app.job.title}`;
-    const calendarUrl = googleCalendarUrl(title, start, end, `Interview for ${app.job.title} at ${app.tenant.name}.`, dto.location);
-    const when = `${start.toUTCString()} (${dto.durationMinutes} min)`;
-    const common = { candidateName: app.candidateName, jobTitle: app.job.title, companyName: app.tenant.name, when, calendarUrl, location: dto.location };
-
-    const template = dto.isReschedule ? EmailTemplates.interviewRescheduled : EmailTemplates.interviewScheduled;
-    await this.email.send({ tenantId: user.tenantId, to: app.candidateEmail, email: template({ ...common, recipientName: app.candidateName }) });
-    await this.email.send({ tenantId: user.tenantId, to: interviewerEmail, recipientUserId: interviewer.id, email: template({ ...common, recipientName: interviewer.name }) });
-    await this.audit.log({ tenantId: user.tenantId, userId: user.userId, action: eventType, resource: 'hiring', resourceId: id, newValues: { startsAt: start.toISOString(), durationMinutes: dto.durationMinutes, interviewerEmail } });
-    return { ...updated, calendarUrl };
+    return this.interviews.schedule(user, id, dto);
   }
 
   async rescreen(user: AuthUser, id: string) {
     await this.findApplication(user.tenantId, id);
     if (!this.ai.enabled) throw new BadRequestException('AI screening is not configured');
-    await this.rabbit.publish(HIRING_QUEUE, 'screen', { applicationId: id, tenantId: user.tenantId });
+    await this.prisma.$transaction(async (tx) => {
+      const event = await tx.applicationEvent.create({ data: { tenantId: user.tenantId, applicationId: id, actorUserId: user.userId, type: 'AI_RESCREEN_REQUESTED' } });
+      await tx.auditLog.create({ data: { tenantId: user.tenantId, userId: user.userId, action: 'AI_RESCREEN_REQUESTED', resource: 'hiring', resourceId: id } });
+      await this.outbox.enqueueHiringJob(tx, {
+        tenantId: user.tenantId,
+        applicationId: id,
+        eventKey: `ai-rescreen:${event.id}`,
+        jobType: 'screen',
+        payload: { applicationId: id, tenantId: user.tenantId },
+      });
+    });
     return { queued: true };
   }
 

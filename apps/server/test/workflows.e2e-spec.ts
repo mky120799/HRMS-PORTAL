@@ -4,6 +4,7 @@
 import { TokenService } from '../src/common/auth/token.service';
 import { PrismaService } from '../src/common/prisma/prisma.service';
 import { FAKE_PDF, multipart, PASSWORD, TestClient, unique } from './helpers';
+import { createHmac } from 'crypto';
 
 /** Next Monday..Tuesday at least a week ahead, as YYYY-MM-DD. */
 function upcomingWeekdays(weeksAhead = 1): [string, string] {
@@ -234,13 +235,43 @@ describe('Workflows', () => {
       expect(resume.status).toBe(200);
 
       const startsAt = new Date(Date.now() + 3 * 86_400_000).toISOString();
-      const interview = await t.request('POST', `/hiring/applications/${id}/schedule-interview`, { token: manager.token, body: { startsAt, durationMinutes: 45 } });
+      const interview = await t.request('POST', `/hiring/applications/${id}/schedule-interview`, { token: manager.token, body: { startsAt, durationMinutes: 60, location: 'Room 7' } });
       expect(interview.status).toBe(201);
       expect(interview.body.data.status).toBe('INTERVIEW');
+      expect(interview.body.data.interviewDurationMinutes).toBe(60);
+      expect(interview.body.data.interviewLocation).toBe('Room 7');
       expect(interview.body.data.calendarUrl).toContain('calendar.google.com');
 
-      expect((await t.request('PATCH', `/hiring/applications/${id}`, { token: manager.token, body: { status: 'HIRED' } })).status).toBe(403); // admin only
-      expect((await t.request('PATCH', `/hiring/applications/${id}`, { token: admin.token, body: { status: 'OFFERED' } })).status).toBe(200);
+      const stages = (await t.request('GET', '/hiring/stages', { token: manager.token })).body.data;
+      const offered = stages.find((stage: any) => stage.category === 'OFFERED');
+      const interviewStage = stages.find((stage: any) => stage.category === 'INTERVIEW');
+      expect((await t.request('POST', `/hiring/applications/${id}/move`, { token: manager.token, body: { stageId: offered.id } })).status).toBe(409);
+      expect((await t.request('POST', `/hiring/applications/${id}/move`, { token: admin.token, body: { stageId: offered.id } })).status).toBe(201);
+      expect((await t.request('POST', `/hiring/applications/${id}/move`, { token: admin.token, body: { stageId: interviewStage.id } })).status).toBe(409);
+      expect((await t.request('POST', `/hiring/applications/${id}/move`, { token: admin.token, body: { stageId: interviewStage.id, note: 'Re-opened after compensation review' } })).status).toBe(201);
+
+      const reordered = [...stages].reverse().map((stage: any) => stage.id);
+      const reorder = await t.request('PUT', '/hiring/stages/reorder', { token: admin.token, body: { stageIds: reordered } });
+      expect(reorder.status).toBe(200);
+      expect(reorder.body.data.map((stage: any) => stage.id)).toEqual(reordered);
+
+      const timeline = await t.request('GET', `/hiring/applications/${id}/timeline`, { token: manager.token });
+      expect(timeline.body.data.map((event: any) => event.type)).toEqual(expect.arrayContaining(['APPLICATION_SUBMITTED', 'INTERVIEW_SCHEDULED', 'STAGE_ROLLED_BACK']));
+    });
+
+    it('processes an assessment callback idempotently at the documented path', async () => {
+      const job = await t.request('POST', '/hiring/jobs', { token: admin.token, body: { title: 'QA Engineer', department: 'Engineering', description: 'Own automated product quality and release confidence.' } });
+      const applied = await t.request('POST', `/careers/${admin.tenant.slug}/jobs/${job.body.data.id}/apply`, multipart({ candidateName: 'Alex Assessed', candidateEmail: `assessed-${unique()}@example.com`, consent: 'true' }, { field: 'resume', filename: 'cv.pdf', content: FAKE_PDF, type: 'application/pdf' }));
+      const integration = await t.request('POST', '/hiring/assessment-integrations', { token: admin.token, body: { provider: `TEST_${unique().toUpperCase()}`, displayName: 'Test Provider' } });
+      const externalId = `assessment-${unique()}`;
+      const linked = await t.request('POST', `/hiring/applications/${applied.body.data.applicationId}/assessments`, { token: manager.token, body: { integrationId: integration.body.data.id, externalId } });
+      expect(linked.status).toBe(201);
+
+      const payload = Buffer.from(JSON.stringify({ eventId: `event-${unique()}`, externalId, status: 'COMPLETED', score: 88, recommendation: 'ADVANCE' }));
+      const signature = createHmac('sha256', integration.body.data.webhookSecret).update(payload).digest('hex');
+      const callback = () => t.request('POST', `/hiring/assessment-integrations/${integration.body.data.id}/webhook`, { payload, headers: { 'content-type': 'application/json', 'x-assessment-signature': signature } });
+      expect((await callback()).body.data).toEqual({ received: true, duplicate: false });
+      expect((await callback()).body.data).toEqual({ received: true, duplicate: true });
     });
 
     it('closed jobs stop accepting applications', async () => {

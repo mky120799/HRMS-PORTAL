@@ -1,7 +1,7 @@
 /**
  * Security regression suite. Each block corresponds to a vulnerability found
  * in the pre-production audit and proves it stays fixed.
- * Requires DATABASE_URL (migrated) and Redis — see docs/TESTING.md.
+ * Requires DATABASE_URL (migrated) and RabbitMQ — see docs/TESTING.md.
  */
 import { TokenService } from '../src/common/auth/token.service';
 import { PrismaService } from '../src/common/prisma/prisma.service';

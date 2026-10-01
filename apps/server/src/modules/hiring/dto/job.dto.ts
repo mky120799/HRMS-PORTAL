@@ -38,6 +38,11 @@ export const updateHiringStageSchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, 'Provide at least one stage change');
 export type UpdateHiringStageDto = z.infer<typeof updateHiringStageSchema>;
 
+export const reorderHiringStagesSchema = z.object({
+  stageIds: z.array(z.string().uuid()).min(2).refine((ids) => new Set(ids).size === ids.length, 'Stage IDs must be unique'),
+});
+export type ReorderHiringStagesDto = z.infer<typeof reorderHiringStagesSchema>;
+
 export const moveApplicationSchema = z.object({
   stageId: z.string().uuid(),
   note: z.string().trim().min(1).max(2_000).optional(),

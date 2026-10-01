@@ -9,8 +9,8 @@ const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g,
 /**
  * Per-tenant Slack notifications. Each workspace configures its own
  * (encrypted) incoming-webhook URL — one customer's events can never reach
- * another customer's channel. Delivery is best-effort: failures are logged and
- * never break the business operation that triggered them.
+ * another customer's channel. General notifications are best-effort. Hiring
+ * notifications propagate failures so their durable outbox can retry them.
  */
 @Injectable()
 export class SlackService {
@@ -27,13 +27,14 @@ export class SlackService {
     return this.crypto.decryptOptional(enc);
   }
 
-  private async post(tenantId: string, channel: 'general' | 'hiring', payload: object) {
+  private async post(tenantId: string, channel: 'general' | 'hiring', payload: object, throwOnFailure = false) {
     try {
       const url = await this.webhookFor(tenantId, channel);
       if (!url) return;
       await axios.post(url, payload, { timeout: 5000, maxRedirects: 0 });
     } catch (err: any) {
       this.logger.warn(`Slack notification failed for tenant ${tenantId}: ${err.message}`);
+      if (throwOnFailure) throw err;
     }
   }
 
@@ -61,6 +62,6 @@ export class SlackService {
     return this.post(tenantId, 'hiring', {
       text: `New application for ${esc(p.jobTitle)}`,
       blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `:inbox_tray: *New application* for *${esc(p.jobTitle)}* from ${esc(p.candidateName)}` } }],
-    });
+    }, true);
   }
 }

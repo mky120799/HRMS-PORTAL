@@ -30,6 +30,11 @@ export class EmailProcessor implements OnModuleInit {
   }
 
   async process({ notificationId, to, subject, html, text }: EmailJob, attempt: number): Promise<void> {
+    const claimed = await this.prisma.notification.updateMany({
+      where: { id: notificationId, status: { in: ['QUEUED', 'FAILED'] } },
+      data: { status: 'PROCESSING' },
+    });
+    if (!claimed.count) return;
     try {
       if (this.ses) {
         await this.ses.send(

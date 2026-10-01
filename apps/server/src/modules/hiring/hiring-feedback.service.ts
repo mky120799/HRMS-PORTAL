@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AuthUser } from '../../common/auth/auth-user';
-import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { UpsertFeedbackDto } from './dto/job.dto';
 
@@ -26,10 +25,7 @@ const RECOMMENDATION_LABELS: Record<string, string> = {
 /** Manages per-interviewer structured feedback for an application. */
 @Injectable()
 export class HiringFeedbackService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit: AuditService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /** List all feedback records for an application and compute aggregate stats. */
   async list(tenantId: string, applicationId: string) {
@@ -60,87 +56,57 @@ export class HiringFeedbackService {
    * Sending feedback twice updates it rather than creating a duplicate.
    */
   async upsert(user: AuthUser, applicationId: string, dto: UpsertFeedbackDto) {
-    const application = await this.prisma.application.findFirst({
-      where: { id: applicationId, tenantId: user.tenantId },
-      select: { id: true },
-    });
-    if (!application) throw new NotFoundException('Application not found');
-
-    const existing = await this.prisma.interviewFeedback.findUnique({
-      where: { applicationId_authorUserId: { applicationId, authorUserId: user.userId } },
-      select: { id: true },
-    });
-
-    if (existing) {
-      const updated = await this.prisma.interviewFeedback.update({
-        where: { id: existing.id },
-        data: { rating: dto.rating, recommendation: dto.recommendation, notes: dto.notes ?? null },
-        select: FEEDBACK_SELECT,
+    return this.prisma.$transaction(async (tx) => {
+      const application = await tx.application.findFirst({ where: { id: applicationId, tenantId: user.tenantId }, select: { id: true } });
+      if (!application) throw new NotFoundException('Application not found');
+      const existing = await tx.interviewFeedback.findUnique({
+        where: { applicationId_authorUserId: { applicationId, authorUserId: user.userId } },
+        select: { id: true },
       });
-      await this.prisma.applicationEvent.create({
+      const feedback = existing
+        ? await tx.interviewFeedback.update({
+            where: { id: existing.id },
+            data: { rating: dto.rating, recommendation: dto.recommendation, notes: dto.notes ?? null },
+            select: FEEDBACK_SELECT,
+          })
+        : await tx.interviewFeedback.create({
+            data: { tenantId: user.tenantId, applicationId, authorUserId: user.userId, rating: dto.rating, recommendation: dto.recommendation, notes: dto.notes ?? null },
+            select: FEEDBACK_SELECT,
+          });
+      const eventType = existing ? 'FEEDBACK_UPDATED' : 'FEEDBACK_SUBMITTED';
+      await tx.applicationEvent.create({
         data: {
           tenantId: user.tenantId,
           applicationId,
           actorUserId: user.userId,
-          type: 'FEEDBACK_UPDATED',
+          type: eventType,
           metadata: { rating: dto.rating, recommendation: dto.recommendation },
         },
       });
-      await this.audit.log({
-        tenantId: user.tenantId,
-        userId: user.userId,
-        action: 'INTERVIEW_FEEDBACK_UPDATED',
-        resource: 'hiring',
-        resourceId: applicationId,
-        newValues: { rating: dto.rating, recommendation: RECOMMENDATION_LABELS[dto.recommendation] },
+      await tx.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.userId,
+          action: `INTERVIEW_${eventType}`,
+          resource: 'hiring',
+          resourceId: applicationId,
+          newValues: { rating: dto.rating, recommendation: RECOMMENDATION_LABELS[dto.recommendation] },
+        },
       });
-      return updated;
-    }
-
-    const created = await this.prisma.interviewFeedback.create({
-      data: {
-        tenantId: user.tenantId,
-        applicationId,
-        authorUserId: user.userId,
-        rating: dto.rating,
-        recommendation: dto.recommendation,
-        notes: dto.notes ?? null,
-      },
-      select: FEEDBACK_SELECT,
+      return feedback;
     });
-    await this.prisma.applicationEvent.create({
-      data: {
-        tenantId: user.tenantId,
-        applicationId,
-        actorUserId: user.userId,
-        type: 'FEEDBACK_SUBMITTED',
-        metadata: { rating: dto.rating, recommendation: dto.recommendation },
-      },
-    });
-    await this.audit.log({
-      tenantId: user.tenantId,
-      userId: user.userId,
-      action: 'INTERVIEW_FEEDBACK_SUBMITTED',
-      resource: 'hiring',
-      resourceId: applicationId,
-      newValues: { rating: dto.rating, recommendation: RECOMMENDATION_LABELS[dto.recommendation] },
-    });
-    return created;
   }
 
   /** Delete the calling user's own feedback (e.g. mistaken submission). */
   async remove(user: AuthUser, applicationId: string) {
-    const result = await this.prisma.interviewFeedback.deleteMany({
-      where: { applicationId, tenantId: user.tenantId, authorUserId: user.userId },
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.interviewFeedback.deleteMany({ where: { applicationId, tenantId: user.tenantId, authorUserId: user.userId } });
+      if (!result.count) throw new NotFoundException('Feedback not found or already deleted');
+      await tx.applicationEvent.create({ data: { tenantId: user.tenantId, applicationId, actorUserId: user.userId, type: 'FEEDBACK_DELETED' } });
+      await tx.auditLog.create({
+        data: { tenantId: user.tenantId, userId: user.userId, action: 'INTERVIEW_FEEDBACK_DELETED', resource: 'hiring', resourceId: applicationId },
+      });
+      return { deleted: true };
     });
-    if (!result.count) throw new NotFoundException('Feedback not found or already deleted');
-    await this.audit.log({
-      tenantId: user.tenantId,
-      userId: user.userId,
-      action: 'INTERVIEW_FEEDBACK_DELETED',
-      resource: 'hiring',
-      resourceId: applicationId,
-    });
-    return { deleted: true };
   }
 }
