@@ -1,8 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
 import type { MultipartFile } from '@fastify/multipart';
 import { Prisma } from '@prisma/client';
-import { Queue } from 'bullmq';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
@@ -15,10 +13,11 @@ import { paginate, paged } from '../../common/validation/common.schemas';
 import { effectivePlan, planMeetsRequirement } from '../../common/subscription/subscription-plans';
 import { SlackService } from '../integrations/slack.service';
 import { AiService } from '../ai/ai.service';
+import { RabbitMqService, HIRING_QUEUE } from '../../common/messaging/rabbitmq.service';
 import { applySchema, type CreateJobDto, type ListApplicationsQuery, type ScheduleInterviewDto, type UpdateJobDto } from './dto/job.dto';
 import type { ApplicationStatus } from '../../common/constants/domain';
 
-export const HIRING_QUEUE = 'hiring';
+export { HIRING_QUEUE } from '../../common/messaging/rabbitmq.service';
 const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 const NOTIFY_CANDIDATE: ApplicationStatus[] = ['SCREENING', 'OFFERED', 'HIRED', 'REJECTED'];
 
@@ -43,7 +42,7 @@ export class HiringService {
     private readonly audit: AuditService,
     private readonly slack: SlackService,
     private readonly ai: AiService,
-    @InjectQueue(HIRING_QUEUE) private readonly queue: Queue,
+    private readonly rabbit: RabbitMqService,
   ) {}
 
   // ─── Public careers site ────────────────────────────────────────────────────
@@ -100,7 +99,7 @@ export class HiringService {
     }
 
     if (this.ai.enabled && planMeetsRequirement(effectivePlan(job.tenant), 'ENTERPRISE')) {
-      await this.queue.add('screen', { applicationId: application.id, tenantId: job.tenantId }, { attempts: 3, backoff: { type: 'exponential', delay: 60_000 }, removeOnComplete: true, removeOnFail: 100 });
+      await this.rabbit.publish(HIRING_QUEUE, 'screen', { applicationId: application.id, tenantId: job.tenantId });
     }
     await this.email.send({
       tenantId: job.tenantId,
@@ -197,7 +196,7 @@ export class HiringService {
   async rescreen(user: AuthUser, id: string) {
     await this.findApplication(user.tenantId, id);
     if (!this.ai.enabled) throw new BadRequestException('AI screening is not configured');
-    await this.queue.add('screen', { applicationId: id, tenantId: user.tenantId }, { attempts: 3, backoff: { type: 'exponential', delay: 60_000 }, removeOnComplete: true, removeOnFail: 100 });
+    await this.rabbit.publish(HIRING_QUEUE, 'screen', { applicationId: id, tenantId: user.tenantId });
     return { queued: true };
   }
 

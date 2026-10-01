@@ -84,7 +84,7 @@ Validated at boot by `apps/server/src/config/env.ts`.
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | add `sslmode=require` in production |
-| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_TLS` | host required | |
+| `RABBITMQ_URL` | AMQP connection URL required | |
 | `JWT_SECRET` | yes, ≥ 32 chars | root for all token keys |
 | `ENCRYPTION_KEY` | yes, 32 bytes base64 | back it up; losing it loses 2FA secrets/webhooks |
 | `FRONTEND_URL`, `CORS_ORIGINS` | yes (https in prod) | links in emails, CORS allow-list |

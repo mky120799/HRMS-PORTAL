@@ -6,9 +6,9 @@ import { PrismaService } from '../src/common/prisma/prisma.service';
 import { FAKE_PDF, multipart, PASSWORD, TestClient, unique } from './helpers';
 
 /** Next Monday..Tuesday at least a week ahead, as YYYY-MM-DD. */
-function upcomingWeekdays(): [string, string] {
+function upcomingWeekdays(weeksAhead = 1): [string, string] {
   const d = new Date();
-  d.setUTCDate(d.getUTCDate() + 7 + ((8 - d.getUTCDay()) % 7));
+  d.setUTCDate(d.getUTCDate() + weeksAhead * 7 + ((8 - d.getUTCDay()) % 7));
   const start = d.toISOString().slice(0, 10);
   d.setUTCDate(d.getUTCDate() + 1);
   return [start, d.toISOString().slice(0, 10)];
@@ -100,6 +100,48 @@ describe('Workflows', () => {
       expect(ok.status).toBe(200);
       expect(ok.body.data.status).toBe('APPROVED');
       expect((await t.request('PATCH', `/leave-requests/${leaveId}/status`, { token: admin.token, body: { status: 'REJECTED' } })).status).toBe(409);
+    });
+
+    it('snapshots multi-step approvals and maintains an idempotent ledger statement', async () => {
+      const rules = await t.request('PUT', '/leave-approval-rules', {
+        token: admin.token,
+        body: {
+          type: 'ANNUAL',
+          rules: [
+            { step: 1, approverKind: 'DIRECT_MANAGER' },
+            { step: 2, approverKind: 'ROLE', approverRole: 'ADMIN' },
+          ],
+        },
+      });
+      expect(rules.status).toBe(200);
+      const [secondStart, secondEnd] = upcomingWeekdays(3);
+      const request = await t.request('POST', '/leave-requests', {
+        token: employee.token,
+        body: { type: 'ANNUAL', startDate: secondStart, endDate: secondEnd, requestKey: '00000000-0000-4000-8000-000000000001' },
+      });
+      expect(request.status).toBe(201);
+      const retry = await t.request('POST', '/leave-requests', {
+        token: employee.token,
+        body: { type: 'ANNUAL', startDate: secondStart, endDate: secondEnd, requestKey: '00000000-0000-4000-8000-000000000001' },
+      });
+      expect(retry.body.data.id).toBe(request.body.data.id);
+
+      const managerStep = await t.request('PATCH', `/leave-requests/${request.body.data.id}/status`, { token: manager.token, body: { status: 'APPROVED' } });
+      expect(managerStep.status).toBe(200);
+      expect(managerStep.body.data.status).toBe('PENDING');
+      const finalStep = await t.request('PATCH', `/leave-requests/${request.body.data.id}/status`, { token: admin.token, body: { status: 'APPROVED' } });
+      expect(finalStep.status).toBe(200);
+      expect(finalStep.body.data.status).toBe('APPROVED');
+
+      const statement = await t.request('GET', `/leave-balance-ledger?employeeId=${employee.employeeId}&type=ANNUAL`, { token: admin.token });
+      expect(statement.status).toBe(200);
+      expect(statement.body.data.map((entry: any) => entry.event)).toEqual(expect.arrayContaining(['RESERVATION', 'RELEASE', 'CONSUMPTION']));
+
+      const adjustment = { employeeId: employee.employeeId, type: 'ANNUAL', year: new Date().getUTCFullYear(), days: 1, reason: 'Verified migration correction', adjustmentKey: '00000000-0000-4000-8000-000000000002' };
+      const firstAdjustment = await t.request('POST', '/leave-balance-adjustments', { token: admin.token, body: adjustment });
+      const repeatedAdjustment = await t.request('POST', '/leave-balance-adjustments', { token: admin.token, body: adjustment });
+      expect(firstAdjustment.status).toBe(201);
+      expect(repeatedAdjustment.body.data.id).toBe(firstAdjustment.body.data.id);
     });
   });
 

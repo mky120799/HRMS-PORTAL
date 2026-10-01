@@ -29,6 +29,9 @@ type Leave = {
   employee?: { firstName: string; lastName: string; department?: string | null };
 };
 type Balance = { type: string; isPaid: boolean; quota: number | null; used: number; pending: number; remaining: number | null };
+type Policy = { type: string; isPaid: boolean; annualQuota: number; accrualMode: string; carryForwardLimit?: number | null; allowNegative: boolean };
+type LedgerEntry = { id: string; type: string; event: string; days: number | string; createdAt: string; metadata?: { reason?: string } | null };
+type ApprovalRule = { step: number; approverKind: 'DIRECT_MANAGER' | 'ROLE' | 'SPECIFIC_USER'; approverRole?: 'ADMIN' | 'MANAGER' | 'EMPLOYEE'; approverUserId?: string };
 
 const schema = z
   .object({
@@ -59,11 +62,18 @@ export function LeavePage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const role = getAuth()?.user.role;
+  const isAdmin = role === 'ADMIN';
   const canReview = role === 'ADMIN' || role === 'MANAGER';
   const [reviewScope, setReviewScope] = useState<'team' | 'all'>(role === 'ADMIN' ? 'all' : 'team');
+  const [adminType, setAdminType] = useState('ANNUAL');
+  const [adjustment, setAdjustment] = useState({ employeeId: '', type: 'ANNUAL', days: '', reason: '' });
+  const [rulesDraft, setRulesDraft] = useState<ApprovalRule[]>([{ step: 1, approverKind: 'DIRECT_MANAGER' }]);
 
-  const policies = useQuery({ queryKey: ['leave-policies'], queryFn: async () => (await api.get<{ type: string; isPaid: boolean }[]>('/leave-policies')).data });
+  const policies = useQuery({ queryKey: ['leave-policies'], queryFn: async () => (await api.get<Policy[]>('/leave-policies')).data });
   const balance = useQuery({ queryKey: ['leave', 'balance'], queryFn: async () => (await api.get<Balance[]>('/leave-requests/balance')).data });
+  const ledger = useQuery({ queryKey: ['leave', 'ledger'], queryFn: async () => (await api.get<LedgerEntry[]>('/leave-balance-ledger')).data });
+  const policyVersions = useQuery({ queryKey: ['leave-policy-versions', adminType], enabled: isAdmin, queryFn: async () => (await api.get<Policy[]>(`/leave-policies/${adminType}/versions`)).data });
+  const approvalRules = useQuery({ queryKey: ['leave-approval-rules'], enabled: isAdmin, queryFn: async () => (await api.get<Array<ApprovalRule & { type: string }>>('/leave-approval-rules')).data });
   const mine = useQuery({ queryKey: ['leave', 'mine'], queryFn: async () => (await api.get<Paged<Leave>>('/leave-requests', { params: { scope: 'mine', pageSize: 50 } })).data });
   const pending = useQuery({
     queryKey: ['leave', 'review', reviewScope],
@@ -72,7 +82,11 @@ export function LeavePage() {
   });
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({ resolver: zodResolver(schema) });
-  const refresh = () => qc.invalidateQueries({ queryKey: ['leave'] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['leave'] });
+    qc.invalidateQueries({ queryKey: ['leave-policies'] });
+    qc.invalidateQueries({ queryKey: ['leave-approval-rules'] });
+  };
   const onError = (e: unknown) => showToast(getErrorMessage(e), 'error');
 
   const create = useMutation({
@@ -103,6 +117,29 @@ export function LeavePage() {
     },
     onError,
   });
+  const adjustBalance = useMutation({
+    mutationFn: async () => api.post('/leave-balance-adjustments', { ...adjustment, type: adminType, days: Number(adjustment.days) }),
+    onSuccess: () => {
+      setAdjustment((v) => ({ ...v, days: '', reason: '' }));
+      refresh();
+      showToast('Balance adjustment recorded', 'success');
+    },
+    onError,
+  });
+  const saveRules = useMutation({
+    mutationFn: async () => api.put('/leave-approval-rules', { type: adminType, rules: rulesDraft }),
+    onSuccess: () => {
+      refresh();
+      showToast('Approval workflow saved', 'success');
+    },
+    onError,
+  });
+
+  const loadRules = (type: string) => {
+    setAdminType(type);
+    const current = approvalRules.data?.filter((rule) => rule.type === type).map(({ type: _type, ...rule }) => rule);
+    setRulesDraft(current?.length ? current : [{ step: 1, approverKind: 'DIRECT_MANAGER' }]);
+  };
 
   return (
     <div className="space-y-6">
@@ -276,6 +313,68 @@ export function LeavePage() {
             </Table>
           </CardContent>
         </Card>
+      )}
+
+      <Card className="bg-white/50 backdrop-blur-xl overflow-hidden">
+        <CardHeader>
+          <CardTitle>Balance statement</CardTitle>
+          <CardDescription>Every credit, reservation, release, consumption, and correction for the current year.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-slate-50/50"><TableRow><TableHead className="pl-6">When</TableHead><TableHead>Type</TableHead><TableHead>Event</TableHead><TableHead>Days</TableHead><TableHead className="pr-6">Reason</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {ledger.data?.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell className="pl-6 text-sm">{fmtDay(entry.createdAt)}</TableCell>
+                  <TableCell>{entry.type}</TableCell><TableCell>{entry.event.replaceAll('_', ' ')}</TableCell>
+                  <TableCell className={Number(entry.days) < 0 ? 'text-red-600' : 'text-emerald-600'}>{Number(entry.days) > 0 ? '+' : ''}{entry.days}</TableCell>
+                  <TableCell className="pr-6 text-sm text-muted-foreground">{entry.metadata?.reason ?? '—'}</TableCell>
+                </TableRow>
+              ))}
+              {!ledger.isLoading && !ledger.data?.length && <TableRow><TableCell colSpan={5} className="h-20 text-center text-muted-foreground">No balance events yet.</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {isAdmin && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="bg-white/50 backdrop-blur-xl">
+            <CardHeader><CardTitle>Approval workflow</CardTitle><CardDescription>Rules are snapshotted when an employee submits a request.</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              <select className="w-full h-10 rounded-md border bg-white/70 px-3 text-sm" value={adminType} onChange={(e) => loadRules(e.target.value)}>
+                {policies.data?.map((policy) => <option key={policy.type} value={policy.type}>{policy.type}</option>)}
+              </select>
+              {rulesDraft.map((rule, index) => (
+                <div key={rule.step} className="grid grid-cols-[auto_1fr_auto] gap-2 items-center">
+                  <span className="text-sm font-medium">{rule.step}</span>
+                  <select className="h-10 rounded-md border bg-white/70 px-3 text-sm" value={rule.approverKind} onChange={(e) => setRulesDraft((rules) => rules.map((item, i) => i === index ? { ...item, approverKind: e.target.value as ApprovalRule['approverKind'], approverRole: e.target.value === 'ROLE' ? 'MANAGER' : undefined, approverUserId: undefined } : item))}>
+                    <option value="DIRECT_MANAGER">Direct manager</option><option value="ROLE">Role</option><option value="SPECIFIC_USER">Named user</option>
+                  </select>
+                  {rulesDraft.length > 1 && <Button variant="ghost" size="sm" onClick={() => setRulesDraft((rules) => rules.filter((_, i) => i !== index).map((item, i) => ({ ...item, step: i + 1 })))}>Remove</Button>}
+                  {rule.approverKind === 'ROLE' && <select className="col-start-2 h-10 rounded-md border bg-white/70 px-3 text-sm" value={rule.approverRole ?? 'MANAGER'} onChange={(e) => setRulesDraft((rules) => rules.map((item, i) => i === index ? { ...item, approverRole: e.target.value as ApprovalRule['approverRole'] } : item))}><option value="MANAGER">Manager</option><option value="ADMIN">Administrator</option><option value="EMPLOYEE">Employee</option></select>}
+                  {rule.approverKind === 'SPECIFIC_USER' && <Input className="col-start-2" placeholder="Approver user UUID" value={rule.approverUserId ?? ''} onChange={(e) => setRulesDraft((rules) => rules.map((item, i) => i === index ? { ...item, approverUserId: e.target.value } : item))} />}
+                </div>
+              ))}
+              <div className="flex gap-2"><Button variant="outline" onClick={() => setRulesDraft((rules) => [...rules, { step: rules.length + 1, approverKind: 'DIRECT_MANAGER' }])}>Add step</Button><Button className="bg-indigo-500 hover:bg-indigo-600 text-white" disabled={saveRules.isPending} onClick={() => saveRules.mutate()}>Save workflow</Button></div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/50 backdrop-blur-xl">
+            <CardHeader><CardTitle>Policy history & adjustment</CardTitle><CardDescription>Policy terms are future-dated; individual corrections are append-only.</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              <select className="w-full h-10 rounded-md border bg-white/70 px-3 text-sm" value={adminType} onChange={(e) => setAdminType(e.target.value)}>{policies.data?.map((policy) => <option key={policy.type} value={policy.type}>{policy.type}</option>)}</select>
+              <div className="rounded-md border bg-white/60 p-3 text-sm space-y-1 max-h-32 overflow-auto">
+                {policyVersions.data?.map((version: any) => <div key={version.id}>v{version.version}: {version.annualQuota} days · {version.accrualMode} · {fmtDay(version.effectiveFrom)}{version.effectiveTo ? ` to ${fmtDay(version.effectiveTo)}` : ' onward'}</div>)}
+                {!policyVersions.data?.length && <span className="text-muted-foreground">No history available yet.</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-2"><Input placeholder="Employee UUID" value={adjustment.employeeId} onChange={(e) => setAdjustment((v) => ({ ...v, employeeId: e.target.value }))} /><Input placeholder="Days, e.g. -1 or 2" value={adjustment.days} onChange={(e) => setAdjustment((v) => ({ ...v, days: e.target.value }))} /></div>
+              <Input placeholder="Required correction reason" value={adjustment.reason} onChange={(e) => setAdjustment((v) => ({ ...v, type: adminType, reason: e.target.value }))} />
+              <Button className="bg-indigo-500 hover:bg-indigo-600 text-white" disabled={adjustBalance.isPending || !adjustment.employeeId || !adjustment.days || adjustment.reason.length < 3} onClick={() => adjustBalance.mutate()}>Record adjustment</Button>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

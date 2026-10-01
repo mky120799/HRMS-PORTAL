@@ -27,7 +27,29 @@ async function main() {
     update: {},
     create: { name: 'Acme Corporation', slug: 'acme', timezone: 'Asia/Kolkata', subscriptionStatus: 'TRIAL', trialEndsAt: new Date(Date.now() + 30 * 86_400_000) },
   });
-  await prisma.leavePolicy.createMany({ data: DEFAULT_LEAVE_POLICIES.map((p) => ({ ...p, tenantId: tenant.id })), skipDuplicates: true });
+  for (const defaultPolicy of DEFAULT_LEAVE_POLICIES) {
+    const policy = await prisma.leavePolicy.upsert({
+      where: { tenantId_type: { tenantId: tenant.id, type: defaultPolicy.type } },
+      update: {},
+      create: { ...defaultPolicy, tenantId: tenant.id },
+    });
+    await prisma.leavePolicyVersion.upsert({
+      where: { leavePolicyId_version: { leavePolicyId: policy.id, version: 1 } },
+      update: {},
+      create: {
+        tenantId: tenant.id,
+        leavePolicyId: policy.id,
+        version: 1,
+        annualQuota: policy.annualQuota,
+        isPaid: policy.isPaid,
+        accrualMode: policy.accrualMode,
+        carryForwardLimit: policy.carryForwardLimit,
+        allowNegative: policy.allowNegative,
+        effectiveFrom: policy.effectiveFrom,
+        effectiveTo: policy.effectiveTo,
+      },
+    });
+  }
 
   const user = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email } },

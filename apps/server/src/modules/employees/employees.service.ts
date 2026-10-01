@@ -136,16 +136,43 @@ export class EmployeesService {
     if (employee.status === 'EXITED') throw new BadRequestException('Employee has already exited');
 
     await this.prisma.$transaction(async (tx) => {
+      const pendingLeave = await tx.leaveRequest.findMany({
+        where: { tenantId: user.tenantId, employeeId: id, status: 'PENDING' },
+        select: { id: true, type: true, startDate: true, days: true },
+      });
+      // Only release a reservation that actually exists. Older leave records
+      // without ledger history must not acquire a fabricated positive balance.
+      const reservations = pendingLeave.length
+        ? await tx.leaveBalanceLedger.findMany({
+            where: { tenantId: user.tenantId, leaveRequestId: { in: pendingLeave.map((leave) => leave.id) }, event: 'RESERVATION' },
+            select: { leaveRequestId: true },
+          })
+        : [];
+      const reservedRequestIds = new Set(reservations.map((entry) => entry.leaveRequestId));
       await tx.employee.update({ where: { id }, data: { status: 'EXITED', exitDate: parseDateOnly(exitDate) } });
       await tx.employee.updateMany({ where: { tenantId: user.tenantId, managerId: id }, data: { managerId: employee.managerId } });
       await tx.leaveRequest.updateMany({ where: { tenantId: user.tenantId, employeeId: id, status: 'PENDING' }, data: { status: 'CANCELLED' } });
+      const releases = pendingLeave
+        .filter((leave) => reservedRequestIds.has(leave.id))
+        .map((leave) => ({
+          tenantId: user.tenantId,
+          employeeId: id,
+          leaveRequestId: leave.id,
+          type: leave.type,
+          year: leave.startDate.getUTCFullYear(),
+          event: 'RELEASE',
+          eventKey: `request:${leave.id}:offboarding-release`,
+          days: leave.days,
+          metadata: { source: 'employee-offboarding' },
+        }));
+      if (releases.length) await tx.leaveBalanceLedger.createMany({ data: releases, skipDuplicates: true });
       if (employee.userId) {
         await tx.user.update({
           where: { id: employee.userId },
           data: { isActive: false, tokenVersion: { increment: 1 }, refreshToken: null, refreshTokenExpiry: null },
         });
       }
-    });
+    }, { isolationLevel: 'Serializable' });
     await this.audit.log({ tenantId: user.tenantId, userId: user.userId, action: 'EMPLOYEE_OFFBOARDED', resource: 'employees', resourceId: id, newValues: { exitDate } });
     return { message: 'Employee offboarded and access revoked' };
   }

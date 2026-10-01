@@ -6,11 +6,17 @@
 Leave policies, company holidays, requests, balances and manager approvals.
 
 ## Data
-* `LeavePolicy(tenantId, type, annualQuota, isPaid)` — defaults per new tenant: ANNUAL 18,
-  SICK 12, CASUAL 6, UNPAID (unpaid days feed payroll loss-of-pay).
+* `LeavePolicy` plus immutable `LeavePolicyVersion` records — future-dated entitlement changes;
+  submitted requests retain the precise policy snapshot used at submission. Defaults
+  remain ANNUAL 18, SICK 12, CASUAL 6, UNPAID; unpaid days feed payroll loss-of-pay.
 * `Holiday(tenantId, date, name)`.
 * `LeaveRequest`: `type`, `startDate`, `endDate`, `days` (working days), `status`
-  (`PENDING | APPROVED | REJECTED | CANCELLED`), `reviewedById`, `reviewedAt`, `reviewNote`.
+  (`PENDING | APPROVED | REJECTED | CANCELLED`), `reviewedById`, `reviewedAt`, `reviewNote`,
+  a client idempotency key and an immutable policy snapshot.
+* `LeaveBalanceLedger`: append-only opening-balance, reservation, release, consumption and
+  adjustment events. Positive entries add available leave; negative entries consume it.
+* `LeaveApproval`: immutable decision history. The current direct-manager workflow writes step
+  one, leaving a safe path for multi-step approval flows.
 
 ## Lifecycle
 
@@ -34,7 +40,12 @@ stateDiagram-v2
 | `PATCH /leave-requests/:id/status` | MANAGER, ADMIN | approve / reject with note |
 | `POST /leave-requests/:id/cancel` | owner / ADMIN | |
 | `GET /leave-policies` · `PUT /leave-policies` | user · ADMIN | upsert a type |
+| `GET /leave-policies/:type/versions` | ADMIN | immutable entitlement-policy history |
 | `GET /holidays?year` · `POST /holidays` · `DELETE /holidays/:id` | user · ADMIN · ADMIN | |
+| `POST /leave-accruals/run` | ADMIN / scheduler | Idempotently award one month for `MONTHLY` policies |
+| `POST /leave-carry-forward/run` | ADMIN / scheduler | Idempotently carry a bounded unused balance into next year |
+| `POST /leave-balance-adjustments` | ADMIN | Append-only, idempotent credit/debit with a required reason |
+| `GET /leave-approval-rules` · `PUT /leave-approval-rules` | ADMIN | configure sequential direct-manager, role, or named-user steps |
 
 ## Rules
 * **Working days** are computed server-side: Mon–Fri minus tenant holidays. The client never
@@ -42,12 +53,32 @@ stateDiagram-v2
 * **Validation:** end ≥ start; not across a year boundary (split into two); at most one year ahead;
   at least one working day.
 * **No overlaps** with the employee's pending/approved leave (409).
-* **Balance check** for paid types counts **approved + pending**, so an employee cannot submit
-  several requests that together exceed the quota.
+* **Balance check** is performed in a PostgreSQL serializable transaction. Paid requests create
+  an immediate ledger reservation, and retries use `requestKey`, so concurrent submissions cannot
+  overspend a balance or create duplicate requests after a client timeout.
 * **Approval rights:** the employee's *direct manager* or an admin — never yourself.
-* **Race-safe approval:** the status change is `updateMany … WHERE status = 'PENDING'`; if two
-  approvers act at once, only one update succeeds and the other gets 409.
+* **Race-safe approval:** the status change and its ledger conversion happen in one serializable
+  transaction. A reservation is converted to consumption when approved, or released when
+  rejected/cancelled; a duplicate decision receives 409.
 * On decision: email to the employee, per-tenant Slack message (best effort), audit entry.
+* Entitlement changes create a future-dated immutable policy version. The prior version is closed
+  the day before the replacement begins, preventing historical balances from being rewritten.
+* Approval routing is snapshotted at submission. A request stays `PENDING` until every configured
+  step approves; rejection at any step releases its reservation. Administrators retain a documented
+  override, while named approvers and role-based approvers are checked by the service.
+* A direct manager or named approver can delegate approval to another active tenant user for a
+  date-bounded period. Delegation does not alter the original workflow record.
+* Each rule can set a reminder and escalation threshold. The daily worker queues each follow-up
+  exactly once; escalations notify active tenant administrators.
+* Leave cannot be submitted, finalized, or cancelled when it overlaps a finalized payslip. This
+  prevents silent retroactive payroll changes; such cases require a controlled payroll correction.
+* The current calendar is Monday–Friday with tenant holidays. Fractional-day, hour-based,
+  jurisdiction-specific accrual and statutory rules are intentionally not exposed until their
+  policy semantics and payroll treatment are configured for the tenant.
+* A RabbitMQ-backed daily worker runs monthly accruals for every active tenant and retries carry-forward
+  during the first seven days of January. Every ledger event is idempotent, so restarts are safe.
+* Production monitoring should scrape `GET /health/queues` and alert on RabbitMQ dead-letter queues
+  (`hrms.email.dead`, `hrms.hiring.dead`, and `hrms.leave-processing.dead`).
 
 ## Tests
 Workflows: working-day count, overlap 409, balance includes pending, employee cannot approve,

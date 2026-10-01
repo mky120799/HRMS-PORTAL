@@ -15,13 +15,7 @@ export const envSchema = z
     LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
 
     DATABASE_URL: z.string().min(1),
-    REDIS_HOST: z.string().default('localhost'),
-    REDIS_PORT: z.coerce.number().int().positive().default(6379),
-    REDIS_PASSWORD: optionalString,
-    REDIS_TLS: z
-      .enum(['true', 'false'])
-      .default('false')
-      .transform((v) => v === 'true'),
+    RABBITMQ_URL: z.string().url().default('amqp://guest:guest@localhost:5672'),
 
     // Root secret; purpose-specific signing keys are derived from it (see TokenService).
     JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),

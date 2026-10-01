@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RenderedEmail } from './templates';
+import { RabbitMqService, EMAIL_QUEUE } from '../messaging/rabbitmq.service';
 
-export const EMAIL_QUEUE = 'email';
+export { EMAIL_QUEUE } from '../messaging/rabbitmq.service';
 
 export interface EmailJob {
   notificationId: string;
@@ -25,7 +24,7 @@ export interface EmailJob {
 export class EmailService {
   constructor(
     private readonly prisma: PrismaService,
-    @InjectQueue(EMAIL_QUEUE) private readonly queue: Queue<EmailJob>,
+    private readonly rabbit: RabbitMqService,
   ) {}
 
   async send(params: { tenantId: string; to: string; email: RenderedEmail; recipientUserId?: string | null; sensitive?: boolean }) {
@@ -42,16 +41,7 @@ export class EmailService {
       },
     });
 
-    await this.queue.add(
-      'send',
-      { notificationId: notification.id, to: params.to, subject: params.email.subject, html: params.email.html, text: params.email.text },
-      {
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 30_000 },
-        removeOnComplete: true, // do not retain credential links in Redis
-        removeOnFail: { age: 7 * 24 * 3600 },
-      },
-    );
+    await this.rabbit.publish(EMAIL_QUEUE, 'send', { notificationId: notification.id, to: params.to, subject: params.email.subject, html: params.email.html, text: params.email.text });
     return notification;
   }
 }

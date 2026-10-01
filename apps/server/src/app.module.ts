@@ -1,9 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { validateEnv, type Env } from './config/env';
+import { validateEnv } from './config/env';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { CommonModule } from './common/common.module';
 import { AuditModule } from './common/audit/audit.module';
@@ -30,23 +29,14 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { BillingModule } from './modules/stripe/stripe.module';
 import { GdprModule } from './modules/compliance/gdpr.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { RabbitMqModule } from './common/messaging/rabbitmq.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv, cache: true, envFilePath: ['.env', '../../.env'] }),
     // Default: 100 requests/minute per client IP. Sensitive routes override with @Throttle().
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
-    BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService<Env, true>) => ({
-        connection: {
-          host: config.get('REDIS_HOST', { infer: true }),
-          port: config.get('REDIS_PORT', { infer: true }),
-          password: config.get('REDIS_PASSWORD', { infer: true }),
-          tls: config.get('REDIS_TLS', { infer: true }) ? {} : undefined,
-        },
-      }),
-    }),
+    RabbitMqModule,
     PrismaModule,
     CommonModule,
     AuditModule,

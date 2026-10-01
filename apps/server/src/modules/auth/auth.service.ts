@@ -80,7 +80,23 @@ export class AuthService {
       const tenant = await tx.tenant.create({
         data: { name: dto.tenantName, slug: slugify(dto.tenantName), subscriptionStatus: 'TRIAL', subscriptionPlan: 'FREE', trialEndsAt },
       });
-      await tx.leavePolicy.createMany({ data: DEFAULT_LEAVE_POLICIES.map((p) => ({ ...p, tenantId: tenant.id })) });
+      await Promise.all(DEFAULT_LEAVE_POLICIES.map(async (defaultPolicy) => {
+        const policy = await tx.leavePolicy.create({ data: { ...defaultPolicy, tenantId: tenant.id } });
+        await tx.leavePolicyVersion.create({
+          data: {
+            tenantId: tenant.id,
+            leavePolicyId: policy.id,
+            version: 1,
+            annualQuota: policy.annualQuota,
+            isPaid: policy.isPaid,
+            accrualMode: policy.accrualMode,
+            carryForwardLimit: policy.carryForwardLimit,
+            allowNegative: policy.allowNegative,
+            effectiveFrom: policy.effectiveFrom,
+            effectiveTo: policy.effectiveTo,
+          },
+        });
+      }));
       const user = await tx.user.create({
         data: { tenantId: tenant.id, email: dto.email, passwordHash, name: dto.name, role: 'ADMIN' },
       });

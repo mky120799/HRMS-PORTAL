@@ -7,13 +7,23 @@ import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   createLeaveRequestSchema,
+  adjustLeaveBalanceSchema,
+  approvalDelegationSchema,
+  accrualRunSchema,
+  carryForwardSchema,
   holidaySchema,
+  leaveLedgerQuerySchema,
+  replaceApprovalRulesSchema,
   listLeavesSchema,
   reviewLeaveSchema,
   upsertPolicySchema,
   type CreateLeaveRequestDto,
+  type AdjustLeaveBalanceDto,
+  type ApprovalDelegationDto,
   type ListLeavesQuery,
+  type LeaveLedgerQuery,
   type ReviewLeaveDto,
+  type ReplaceApprovalRulesDto,
 } from './dto/create-leave.dto';
 
 const yearQuery = z.object({
@@ -37,13 +47,17 @@ export class LeavesController {
     return this.leaves.balance(user, q.employeeId, q.year);
   }
 
+  @Get('leave-balance-ledger')
+  ledger(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(leaveLedgerQuerySchema)) q: LeaveLedgerQuery) {
+    return this.leaves.ledger(user, q);
+  }
+
   @Post('leave-requests')
   create(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(createLeaveRequestSchema)) dto: CreateLeaveRequestDto) {
     return this.leaves.create(user, dto);
   }
 
   @Patch('leave-requests/:id/status')
-  @Roles('ADMIN', 'MANAGER')
   review(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(reviewLeaveSchema)) dto: ReviewLeaveDto) {
     return this.leaves.review(user, id, dto);
   }
@@ -64,6 +78,12 @@ export class LeavesController {
     return this.leaves.upsertPolicy(user.tenantId, dto);
   }
 
+  @Get('leave-policies/:type/versions')
+  @Roles('ADMIN')
+  policyVersions(@CurrentUser() user: AuthUser, @Param('type') type: string) {
+    return this.leaves.listPolicyVersions(user.tenantId, type.trim().toUpperCase());
+  }
+
   @Get('holidays')
   holidays(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(yearQuery)) q: z.infer<typeof yearQuery>) {
     return this.leaves.listHolidays(user.tenantId, q.year);
@@ -79,5 +99,46 @@ export class LeavesController {
   @Roles('ADMIN')
   removeHoliday(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.leaves.removeHoliday(user.tenantId, id);
+  }
+
+  /** Intended for a protected scheduler or an admin-operated recovery run. */
+  @Post('leave-accruals/run')
+  @Roles('ADMIN')
+  accrue(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(accrualRunSchema)) dto: { year: number; month: number }) {
+    return this.leaves.accrueMonthly(user.tenantId, dto.year, dto.month);
+  }
+
+  @Post('leave-carry-forward/run')
+  @Roles('ADMIN')
+  carryForward(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(carryForwardSchema)) dto: { year: number }) {
+    return this.leaves.carryForward(user.tenantId, dto.year);
+  }
+
+  @Post('leave-balance-adjustments')
+  @Roles('ADMIN')
+  adjustBalance(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(adjustLeaveBalanceSchema)) dto: AdjustLeaveBalanceDto) {
+    return this.leaves.adjustBalance(user, dto);
+  }
+
+  @Get('leave-approval-rules')
+  @Roles('ADMIN')
+  approvalRules(@CurrentUser() user: AuthUser) {
+    return this.leaves.listApprovalRules(user.tenantId);
+  }
+
+  @Put('leave-approval-rules')
+  @Roles('ADMIN')
+  replaceApprovalRules(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(replaceApprovalRulesSchema)) dto: ReplaceApprovalRulesDto) {
+    return this.leaves.replaceApprovalRules(user.tenantId, dto);
+  }
+
+  @Get('leave-approval-delegations')
+  approvalDelegations(@CurrentUser() user: AuthUser) {
+    return this.leaves.listApprovalDelegations(user);
+  }
+
+  @Post('leave-approval-delegations')
+  createApprovalDelegation(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(approvalDelegationSchema)) dto: ApprovalDelegationDto) {
+    return this.leaves.createApprovalDelegation(user, dto);
   }
 }
