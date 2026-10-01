@@ -81,6 +81,22 @@ export const EmailTemplates = {
       p.location ? `Location / link: ${escapeHtml(p.location)}` : '',
     ].filter(Boolean), { label: 'Add to Google Calendar', url: p.calendarUrl }),
 
+  interviewRescheduled: (p: { recipientName: string; candidateName: string; jobTitle: string; companyName: string; when: string; calendarUrl: string; location?: string }) =>
+    build(`Interview rescheduled: ${p.jobTitle}`, 'Interview rescheduled', [
+      `Hi ${escapeHtml(p.recipientName)},`,
+      `Your interview for <strong>${escapeHtml(p.jobTitle)}</strong> at ${escapeHtml(p.companyName)} with ${escapeHtml(p.candidateName)} has been <strong>rescheduled</strong>.`,
+      `New time: <strong>${escapeHtml(p.when)}</strong>.`,
+      p.location ? `Location / link: ${escapeHtml(p.location)}` : '',
+    ].filter(Boolean), { label: 'Add to Google Calendar', url: p.calendarUrl }),
+
+  interviewReminder: (p: { recipientName: string; candidateName: string; jobTitle: string; companyName: string; when: string; calendarUrl: string; location?: string }) =>
+    build(`Reminder: Interview tomorrow — ${p.jobTitle}`, 'Interview reminder', [
+      `Hi ${escapeHtml(p.recipientName)},`,
+      `This is a reminder that your interview for <strong>${escapeHtml(p.jobTitle)}</strong> at ${escapeHtml(p.companyName)} with ${escapeHtml(p.candidateName)} is coming up.`,
+      `Scheduled: <strong>${escapeHtml(p.when)}</strong>.`,
+      p.location ? `Location / link: ${escapeHtml(p.location)}` : '',
+    ].filter(Boolean), { label: 'View in Google Calendar', url: p.calendarUrl }),
+
   leaveDecision: (p: { name: string; status: string; type: string; from: string; to: string; note?: string | null }) =>
     build(`Your ${p.type.toLowerCase()} leave was ${p.status.toLowerCase()}`, `Leave ${p.status.toLowerCase()}`, [
       `Hi ${escapeHtml(p.name)},`,

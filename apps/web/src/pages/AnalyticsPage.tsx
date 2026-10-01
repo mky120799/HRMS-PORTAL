@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  BarChart3, Users, CalendarCheck, Briefcase, TrendingUp, PieChart
+  BarChart3, Users, CalendarCheck, Briefcase, TrendingUp, PieChart,
+  Clock, Target, Timer,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,27 +12,36 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
 
-const StatCard = ({ icon: Icon, label, value, color }: { icon: any; label: string; value: number | string; color: string }) => (
+const StatCard = ({ icon: Icon, label, value, color, sub }: { icon: any; label: string; value: number | string; color: string; sub?: string }) => (
   <Card className="bg-white/50 backdrop-blur-xl">
     <CardContent className="pt-6 flex items-center gap-4">
-      <div className={`p-3 rounded-xl ${color}`}>
+      <div className={`p-3 rounded-xl ${color} shrink-0`}>
         <Icon size={22} className="text-white" />
       </div>
       <div>
         <div className="text-2xl font-bold text-slate-800">{value}</div>
         <div className="text-sm text-muted-foreground">{label}</div>
+        {sub && <div className="text-xs text-slate-400 mt-0.5">{sub}</div>}
       </div>
     </CardContent>
   </Card>
 );
+
+function na(v: number | null | undefined, suffix = '') {
+  if (v == null) return '—';
+  return `${v}${suffix}`;
+}
 
 export function AnalyticsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['analytics'],
     queryFn: async () => (await api.get('/analytics/overview')).data,
   });
-
-  const analytics = data;
+  const { data: hiringData } = useQuery({
+    queryKey: ['analytics-hiring'],
+    queryFn: async () => (await api.get('/analytics/hiring')).data,
+    retry: false,
+  });
 
   if (isLoading) {
     return (
@@ -44,10 +54,21 @@ export function AnalyticsPage() {
     );
   }
 
-  const summary = analytics?.summary ?? {};
-  const departmentBreakdown = analytics?.departmentBreakdown ?? [];
-  const monthlyLeave = analytics?.monthlyLeave ?? [];
-  const hiringFunnel = analytics?.hiringFunnel ?? [];
+  const summary = data?.summary ?? {};
+  const departmentBreakdown = data?.departmentBreakdown ?? [];
+  const monthlyLeave = data?.monthlyLeave ?? [];
+  const hiringFunnel = data?.hiringFunnel ?? [];
+
+  const sourceOfHire: { source: string; applied: number; hired: number }[] = hiringData?.sourceOfHire ?? [];
+  const timePerStage: { stage: string; medianDays: number }[] = hiringData?.timePerStage ?? [];
+  const timeToHire: { avgDays: number | null; medianDays: number | null } = hiringData?.timeToHire ?? {};
+  const offerAcceptanceRate: number | null = hiringData?.offerAcceptanceRate ?? null;
+
+  const sourceChartData = sourceOfHire.map((s) => ({
+    ...s,
+    source: s.source.replace('_', ' '),
+    rate: s.applied > 0 ? Math.round((s.hired / s.applied) * 100) : 0,
+  }));
 
   return (
     <div className="space-y-8">
@@ -59,9 +80,9 @@ export function AnalyticsPage() {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={Users}         label="Total Employees"   value={summary.totalEmployees ?? 0}   color="bg-indigo-500" />
-        <StatCard icon={CalendarCheck} label="Pending Leave"     value={summary.pendingLeaves ?? 0}      color="bg-emerald-500" />
-        <StatCard icon={Briefcase}     label="Open Positions"    value={summary.openJobs ?? 0}          color="bg-purple-500" />
-        <StatCard icon={TrendingUp}    label="Candidates Hired"  value={summary.hiredCount ?? 0}        color="bg-amber-500" />
+        <StatCard icon={CalendarCheck} label="Pending Leave"     value={summary.pendingLeaves ?? 0}    color="bg-emerald-500" />
+        <StatCard icon={Briefcase}     label="Open Positions"    value={summary.openJobs ?? 0}         color="bg-purple-500" />
+        <StatCard icon={TrendingUp}    label="Candidates Hired"  value={summary.hiredCount ?? 0}       color="bg-amber-500" />
       </div>
 
       {/* Charts Row 1 */}
@@ -150,6 +171,96 @@ export function AnalyticsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Recruitment KPIs ─────────────────────────────────────────────── */}
+      <div>
+        <h3 className="text-xl font-semibold tracking-tight mb-4">Recruitment KPIs</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+          <StatCard
+            icon={Clock}
+            label="Avg time to hire"
+            value={na(timeToHire.avgDays, ' days')}
+            sub={timeToHire.medianDays != null ? `Median: ${timeToHire.medianDays} days` : undefined}
+            color="bg-indigo-500"
+          />
+          <StatCard
+            icon={Timer}
+            label="Offer acceptance rate"
+            value={na(offerAcceptanceRate, '%')}
+            color="bg-emerald-500"
+          />
+          <StatCard
+            icon={Target}
+            label="Total applicants"
+            value={sourceOfHire.reduce((s, r) => s + r.applied, 0)}
+            sub={`${sourceOfHire.reduce((s, r) => s + r.hired, 0)} hired`}
+            color="bg-purple-500"
+          />
+        </div>
+      </div>
+
+      {/* Source of hire + Time per stage — side by side */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Source of hire */}
+        <Card className="bg-white/50 backdrop-blur-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <PieChart size={16} className="text-indigo-500" /> Source of Hire
+            </CardTitle>
+            <CardDescription>Applications and hires by acquisition channel</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {sourceChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={sourceChartData} barSize={28} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                  <XAxis type="number" axisLine={false} tickLine={false} style={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="source" axisLine={false} tickLine={false} width={90} style={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Legend iconType="circle" iconSize={10} />
+                  <Bar dataKey="applied" name="Applied" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="hired"   name="Hired"   fill="#10b981" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[220px] flex items-center justify-center text-muted-foreground text-sm">
+                No data yet — source tracking begins with new applications.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Time per stage */}
+        <Card className="bg-white/50 backdrop-blur-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <BarChart3 size={16} className="text-purple-500" /> Median Days per Stage
+            </CardTitle>
+            <CardDescription>How long candidates typically spend in each stage</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {timePerStage.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={timePerStage} barSize={28} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                  <XAxis type="number" axisLine={false} tickLine={false} style={{ fontSize: 11 }} unit=" d" />
+                  <YAxis type="category" dataKey="stage" axisLine={false} tickLine={false} width={80} style={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: any) => [`${v} days`, 'Median']} />
+                  <Bar dataKey="medianDays" name="Median days" radius={[0, 4, 4, 0]}>
+                    {timePerStage.map((_: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[220px] flex items-center justify-center text-muted-foreground text-sm">
+                Not enough stage data yet.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

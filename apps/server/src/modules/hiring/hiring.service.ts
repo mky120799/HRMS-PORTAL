@@ -24,6 +24,7 @@ const NOTIFY_CANDIDATE: ApplicationStatus[] = ['SCREENING', 'OFFERED', 'HIRED', 
 
 const APPLICATION_FIELDS = {
   id: true, jobId: true, candidateName: true, candidateEmail: true, resumeFilename: true, status: true,
+  source: true,
   aiScore: true, aiReason: true, aiScoredAt: true, interviewAt: true, interviewerEmail: true, createdAt: true, updatedAt: true,
   job: { select: { id: true, title: true, department: true } },
   stage: { select: { id: true, key: true, name: true, category: true, position: true } },
@@ -68,6 +69,7 @@ export class HiringService {
       candidateName: fieldValue(part!, 'candidateName'),
       candidateEmail: fieldValue(part!, 'candidateEmail'),
       consent: fieldValue(part!, 'consent'),
+      source: fieldValue(part!, 'source'),
     });
     if (!parsed.success) throw new BadRequestException({ message: 'Validation failed', errors: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) });
 
@@ -92,9 +94,10 @@ export class HiringService {
           resumeFilename: file.originalName,
           resumeKey: key,
           resumeMimeType: file.mime,
+          source: parsed.data.source ?? 'CAREERS_SITE',
           status: 'APPLIED',
           stageId: initialStage.id,
-          events: { create: { tenantId: job.tenantId, type: 'APPLICATION_SUBMITTED', metadata: { stageId: initialStage.id, stageName: initialStage.name, source: 'CAREERS_SITE' } } },
+          events: { create: { tenantId: job.tenantId, type: 'APPLICATION_SUBMITTED', metadata: { stageId: initialStage.id, stageName: initialStage.name, source: parsed.data.source ?? 'CAREERS_SITE' } } },
         },
         select: { id: true },
       });
@@ -135,7 +138,12 @@ export class HiringService {
   // ─── Applications ───────────────────────────────────────────────────────────
 
   async applications(tenantId: string, q: ListApplicationsQuery) {
-    const where: Prisma.ApplicationWhereInput = { tenantId, ...(q.jobId ? { jobId: q.jobId } : {}), ...(q.status ? { status: q.status } : {}) };
+    const where: Prisma.ApplicationWhereInput = {
+      tenantId,
+      ...(q.jobId ? { jobId: q.jobId } : {}),
+      ...(q.status ? { status: q.status } : {}),
+      ...(q.source ? { source: q.source } : {}),
+    };
     const [items, total] = await Promise.all([
       this.prisma.application.findMany({ where, select: APPLICATION_FIELDS, orderBy: [{ createdAt: 'desc' }], ...paginate(q) }),
       this.prisma.application.count({ where }),
@@ -170,9 +178,9 @@ export class HiringService {
   }
 
   /**
-   * Records the interview and emails candidate + interviewer an
-   * "add to calendar" link. No shared Google account is involved, so there is
-   * no cross-tenant calendar and no stored OAuth refresh token to leak.
+   * Records the interview and emails candidate + interviewer an "add to calendar" link.
+   * When `dto.isReschedule` is true, sends a "rescheduled" email variant instead.
+   * No shared Google account is involved — no stored OAuth token to leak.
    */
   async scheduleInterview(user: AuthUser, id: string, dto: ScheduleInterviewDto) {
     const app = await this.findApplication(user.tenantId, id);
@@ -187,16 +195,17 @@ export class HiringService {
     if (app.status !== 'INTERVIEW') await this.workflow.moveToCategory(user, id, 'INTERVIEW');
     const updated = await this.prisma.application.update({
       where: { id },
-      data: { status: 'INTERVIEW', interviewAt: start, interviewerEmail },
+      data: { status: 'INTERVIEW', interviewAt: start, interviewerEmail, interviewReminderSentAt: null },
       select: APPLICATION_FIELDS,
     });
+    const eventType = dto.isReschedule ? 'INTERVIEW_RESCHEDULED' : 'INTERVIEW_SCHEDULED';
     await this.prisma.applicationEvent.create({
       data: {
         tenantId: user.tenantId,
         applicationId: id,
         actorUserId: user.userId,
-        type: 'INTERVIEW_SCHEDULED',
-        metadata: { startsAt: start.toISOString(), durationMinutes: dto.durationMinutes, interviewerEmail, location: dto.location ?? null },
+        type: eventType,
+        metadata: { startsAt: start.toISOString(), durationMinutes: dto.durationMinutes, interviewerEmail, location: dto.location ?? null, isReschedule: dto.isReschedule },
       },
     });
 
@@ -204,8 +213,11 @@ export class HiringService {
     const calendarUrl = googleCalendarUrl(title, start, end, `Interview for ${app.job.title} at ${app.tenant.name}.`, dto.location);
     const when = `${start.toUTCString()} (${dto.durationMinutes} min)`;
     const common = { candidateName: app.candidateName, jobTitle: app.job.title, companyName: app.tenant.name, when, calendarUrl, location: dto.location };
-    await this.email.send({ tenantId: user.tenantId, to: app.candidateEmail, email: EmailTemplates.interviewScheduled({ ...common, recipientName: app.candidateName }) });
-    await this.email.send({ tenantId: user.tenantId, to: interviewerEmail, recipientUserId: interviewer.id, email: EmailTemplates.interviewScheduled({ ...common, recipientName: interviewer.name }) });
+
+    const template = dto.isReschedule ? EmailTemplates.interviewRescheduled : EmailTemplates.interviewScheduled;
+    await this.email.send({ tenantId: user.tenantId, to: app.candidateEmail, email: template({ ...common, recipientName: app.candidateName }) });
+    await this.email.send({ tenantId: user.tenantId, to: interviewerEmail, recipientUserId: interviewer.id, email: template({ ...common, recipientName: interviewer.name }) });
+    await this.audit.log({ tenantId: user.tenantId, userId: user.userId, action: eventType, resource: 'hiring', resourceId: id, newValues: { startsAt: start.toISOString(), durationMinutes: dto.durationMinutes, interviewerEmail } });
     return { ...updated, calendarUrl };
   }
 

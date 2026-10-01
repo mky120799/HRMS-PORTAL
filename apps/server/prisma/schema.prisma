@@ -54,6 +54,7 @@ model Tenant {
   applications       Application[]
   hiringStages       HiringStage[]
   applicationEvents  ApplicationEvent[]
+  interviewFeedback  InterviewFeedback[]
   assessmentIntegrations AssessmentIntegration[]
   assessmentRequests AssessmentRequest[]
   leaves             LeaveRequest[]
@@ -93,7 +94,8 @@ model User {
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   employee Employee?
-  applicationEvents ApplicationEvent[] @relation("ApplicationEventActor")
+  applicationEvents  ApplicationEvent[]   @relation("ApplicationEventActor")
+  interviewFeedback  InterviewFeedback[]
   delegatedApprovals     LeaveApprovalDelegation[] @relation("Delegate")
   approvalDelegations    LeaveApprovalDelegation[] @relation("Delegator")
 
@@ -347,35 +349,39 @@ model Job {
 }
 
 model Application {
-  id               String    @id @default(uuid())
-  tenantId         String
-  jobId            String
-  stageId          String?
-  candidateName    String
-  candidateEmail   String
-  resumeUrl        String? // legacy, unused
-  resumeFilename   String? // original filename, display only
-  resumeKey        String? // object-storage key (private)
-  resumeMimeType   String?
-  aiScore          Int? // advisory match score 0-100, never used to auto-reject
-  aiReason         String?
-  aiScoredAt       DateTime?
-  status           String    @default("APPLIED") // APPLIED, SCREENING, INTERVIEW, OFFERED, HIRED, REJECTED
-  interviewAt      DateTime?
-  interviewerEmail String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                      String    @id @default(uuid())
+  tenantId                String
+  jobId                   String
+  stageId                 String?
+  candidateName           String
+  candidateEmail          String
+  resumeUrl               String? // legacy, unused
+  resumeFilename          String? // original filename, display only
+  resumeKey               String? // object-storage key (private)
+  resumeMimeType          String?
+  source                  String    @default("CAREERS_SITE") // CAREERS_SITE | LINKEDIN | INDEED | REFERRAL | OTHER
+  aiScore                 Int? // advisory match score 0-100, never used to auto-reject
+  aiReason                String?
+  aiScoredAt              DateTime?
+  status                  String    @default("APPLIED") // APPLIED, SCREENING, INTERVIEW, OFFERED, HIRED, REJECTED
+  interviewAt             DateTime?
+  interviewerEmail        String?
+  interviewReminderSentAt DateTime? // set once reminder email is sent; prevents re-delivery
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  job    Job    @relation(fields: [jobId], references: [id])
-  stage  HiringStage? @relation(fields: [stageId], references: [id])
+  tenant             Tenant             @relation(fields: [tenantId], references: [id])
+  job                Job                @relation(fields: [jobId], references: [id])
+  stage              HiringStage?       @relation(fields: [stageId], references: [id])
   assessmentRequests AssessmentRequest[]
-  events ApplicationEvent[]
+  events             ApplicationEvent[]
+  feedback           InterviewFeedback[]
 
   @@unique([jobId, candidateEmail])
   @@index([jobId])
   @@index([tenantId, status])
   @@index([tenantId, stageId])
+  @@index([tenantId, interviewAt]) // used by reminder cron
 }
 
 /// Tenant-configurable stage within the recruiting pipeline. `category`
@@ -477,6 +483,27 @@ model AssessmentWebhookEvent {
   integration AssessmentIntegration @relation(fields: [integrationId], references: [id])
 
   @@unique([integrationId, providerEventId])
+}
+
+/// Structured feedback left by an interviewer after an interview.
+/// One record per interviewer per application (upsert on re-submission).
+model InterviewFeedback {
+  id             String   @id @default(uuid())
+  tenantId       String
+  applicationId  String
+  authorUserId   String
+  rating         Int      // 1 (poor) – 5 (excellent)
+  recommendation String   // STRONG_YES | YES | NEUTRAL | NO | STRONG_NO
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  application Application @relation(fields: [applicationId], references: [id])
+  author      User        @relation(fields: [authorUserId], references: [id])
+
+  @@unique([applicationId, authorUserId])
+  @@index([tenantId, applicationId])
 }
 
 model Notification {

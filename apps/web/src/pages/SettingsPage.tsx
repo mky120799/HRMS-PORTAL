@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, MessageSquare, ShieldCheck, CalendarDays, Save, Trash2, Plus } from 'lucide-react';
+import { Building2, MessageSquare, ShieldCheck, CalendarDays, Save, Trash2, Plus, Briefcase } from 'lucide-react';
 import { api } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { HiringSettingsPanel } from '../components/HiringSettingsPanel';
 
 type Settings = { id: string; name: string; slug: string; timezone: string; whitelistedIps: string[]; slackWebhookUrl: string | null; slackHiringWebhookUrl: string | null };
 type Policy = { type: string; annualQuota: number; isPaid: boolean };
@@ -203,6 +204,13 @@ export function SettingsPage() {
           </div>
         </div>
       </Section>
+
+      <div>
+        <div className="flex items-center gap-2 text-lg font-semibold mb-4">
+          <Briefcase size={18} className="text-indigo-500" /> Hiring
+        </div>
+        <HiringSettingsPanel />
+      </div>
     </div>
   );
 }

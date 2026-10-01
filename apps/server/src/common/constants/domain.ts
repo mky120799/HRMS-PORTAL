@@ -27,6 +27,12 @@ export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 export const ASSESSMENT_STATUSES = ['PENDING', 'COMPLETED', 'FAILED', 'EXPIRED'] as const;
 export type AssessmentStatus = (typeof ASSESSMENT_STATUSES)[number];
 
+export const APPLICATION_SOURCES = ['CAREERS_SITE', 'LINKEDIN', 'INDEED', 'REFERRAL', 'OTHER'] as const;
+export type ApplicationSource = (typeof APPLICATION_SOURCES)[number];
+
+export const FEEDBACK_RECOMMENDATIONS = ['STRONG_YES', 'YES', 'NEUTRAL', 'NO', 'STRONG_NO'] as const;
+export type FeedbackRecommendation = (typeof FEEDBACK_RECOMMENDATIONS)[number];
+
 export const PAYSLIP_STATUSES = ['DRAFT', 'FINALIZED'] as const;
 export const REVIEW_STATUSES = ['DRAFT', 'SELF_SUBMITTED', 'COMPLETED'] as const;
 export const DOCUMENT_TYPES = ['ID', 'CONTRACT', 'POLICY', 'CERTIFICATE', 'OTHER'] as const;

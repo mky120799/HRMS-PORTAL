@@ -18,4 +18,10 @@ export class AnalyticsController {
   overview(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantSnapshot) {
     return this.analytics.overview(user.tenantId, tenant.timezone);
   }
+
+  @Get('hiring')
+  @Roles('ADMIN', 'MANAGER')
+  hiring(@CurrentUser() user: AuthUser) {
+    return this.analytics.hiringMetrics(user.tenantId);
+  }
 }

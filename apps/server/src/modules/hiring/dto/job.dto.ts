@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { APPLICATION_STATUSES, ASSESSMENT_STATUSES, JOB_STATUSES } from '../../../common/constants/domain';
+import { APPLICATION_SOURCES, APPLICATION_STATUSES, ASSESSMENT_STATUSES, FEEDBACK_RECOMMENDATIONS, JOB_STATUSES } from '../../../common/constants/domain';
 import { email, paginationSchema } from '../../../common/validation/common.schemas';
 
 export const createJobSchema = z.object({
@@ -16,6 +16,7 @@ export type UpdateJobDto = z.infer<typeof updateJobSchema>;
 export const listApplicationsSchema = paginationSchema.extend({
   jobId: z.string().uuid().optional(),
   status: z.enum(APPLICATION_STATUSES).optional(),
+  source: z.enum(APPLICATION_SOURCES).optional(),
 });
 export type ListApplicationsQuery = z.infer<typeof listApplicationsSchema>;
 
@@ -48,6 +49,7 @@ export const scheduleInterviewSchema = z.object({
   durationMinutes: z.number().int().min(15).max(480).default(45),
   interviewerEmail: email.optional(),
   location: z.string().trim().max(300).optional(), // room or video link
+  isReschedule: z.boolean().default(false),
 });
 export type ScheduleInterviewDto = z.infer<typeof scheduleInterviewSchema>;
 
@@ -82,4 +84,14 @@ export const applySchema = z.object({
   candidateName: z.string().trim().min(2).max(120),
   candidateEmail: email,
   consent: z.literal('true', { errorMap: () => ({ message: 'You must consent to data processing to apply' }) }),
+  source: z.enum(APPLICATION_SOURCES).optional(),
 });
+
+// ─── Interview Feedback ───────────────────────────────────────────────────────
+
+export const upsertFeedbackSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  recommendation: z.enum(FEEDBACK_RECOMMENDATIONS),
+  notes: z.string().trim().max(5_000).optional(),
+});
+export type UpsertFeedbackDto = z.infer<typeof upsertFeedbackSchema>;

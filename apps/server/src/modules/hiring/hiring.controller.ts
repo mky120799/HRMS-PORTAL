@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, StreamableFile } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import type { RawBodyRequest } from '@nestjs/common';
@@ -6,6 +6,7 @@ import type { FastifyRequest } from 'fastify';
 import { HiringService } from './hiring.service';
 import { AssessmentIntegrationService } from './assessment-integration.service';
 import { HiringWorkflowService } from './hiring-workflow.service';
+import { HiringFeedbackService } from './hiring-feedback.service';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { RequiresPlan } from '../../common/decorators/plan.decorator';
@@ -17,6 +18,7 @@ import {
   scheduleInterviewSchema,
   updateApplicationSchema,
   updateJobSchema,
+  upsertFeedbackSchema,
   type CreateJobDto,
   type ListApplicationsQuery,
   type ScheduleInterviewDto,
@@ -31,6 +33,7 @@ import {
   type CreateHiringStageDto,
   type MoveApplicationDto,
   type UpdateHiringStageDto,
+  type UpsertFeedbackDto,
 } from './dto/job.dto';
 
 /** Public careers site: /careers/:slug */
@@ -64,6 +67,7 @@ export class HiringController {
     private readonly hiring: HiringService,
     private readonly assessments: AssessmentIntegrationService,
     private readonly workflow: HiringWorkflowService,
+    private readonly feedback: HiringFeedbackService,
   ) {}
 
   @Get('jobs')
@@ -165,6 +169,27 @@ export class HiringController {
   @Post('applications/:id/assessments')
   createAssessmentRequest(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(createAssessmentRequestSchema)) dto: CreateAssessmentRequestDto) {
     return this.assessments.createRequest(user, id, dto);
+  }
+
+  // ─── Interview Feedback ──────────────────────────────────────────────────────
+
+  @Get('applications/:id/feedback')
+  listFeedback(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.feedback.list(user.tenantId, id);
+  }
+
+  @Post('applications/:id/feedback')
+  upsertFeedback(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(upsertFeedbackSchema)) dto: UpsertFeedbackDto,
+  ) {
+    return this.feedback.upsert(user, id, dto);
+  }
+
+  @Delete('applications/:id/feedback')
+  deleteFeedback(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.feedback.remove(user, id);
   }
 }
 
