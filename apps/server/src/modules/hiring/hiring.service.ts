@@ -14,6 +14,7 @@ import { effectivePlan, planMeetsRequirement } from '../../common/subscription/s
 import { SlackService } from '../integrations/slack.service';
 import { AiService } from '../ai/ai.service';
 import { RabbitMqService, HIRING_QUEUE } from '../../common/messaging/rabbitmq.service';
+import { HiringWorkflowService } from './hiring-workflow.service';
 import { applySchema, type CreateJobDto, type ListApplicationsQuery, type ScheduleInterviewDto, type UpdateJobDto } from './dto/job.dto';
 import type { ApplicationStatus } from '../../common/constants/domain';
 
@@ -25,6 +26,7 @@ const APPLICATION_FIELDS = {
   id: true, jobId: true, candidateName: true, candidateEmail: true, resumeFilename: true, status: true,
   aiScore: true, aiReason: true, aiScoredAt: true, interviewAt: true, interviewerEmail: true, createdAt: true, updatedAt: true,
   job: { select: { id: true, title: true, department: true } },
+  stage: { select: { id: true, key: true, name: true, category: true, position: true } },
 } satisfies Prisma.ApplicationSelect;
 
 function googleCalendarUrl(title: string, start: Date, end: Date, details: string, location?: string) {
@@ -43,6 +45,7 @@ export class HiringService {
     private readonly slack: SlackService,
     private readonly ai: AiService,
     private readonly rabbit: RabbitMqService,
+    private readonly workflow: HiringWorkflowService,
   ) {}
 
   // ─── Public careers site ────────────────────────────────────────────────────
@@ -73,6 +76,7 @@ export class HiringService {
       include: { tenant: { select: { id: true, name: true, subscriptionPlan: true, subscriptionStatus: true, trialEndsAt: true } } },
     });
     if (!job) throw new NotFoundException('This position is no longer open');
+    const initialStage = await this.workflow.defaultStage(job.tenantId);
 
     const key = StorageService.tenantKey(job.tenantId, 'resumes', job.id, `${randomUUID()}.${file.ext}`);
     await this.storage.put(key, file.buffer, file.mime);
@@ -89,6 +93,8 @@ export class HiringService {
           resumeKey: key,
           resumeMimeType: file.mime,
           status: 'APPLIED',
+          stageId: initialStage.id,
+          events: { create: { tenantId: job.tenantId, type: 'APPLICATION_SUBMITTED', metadata: { stageId: initialStage.id, stageName: initialStage.name, source: 'CAREERS_SITE' } } },
         },
         select: { id: true },
       });
@@ -150,7 +156,7 @@ export class HiringService {
   async updateStatus(user: AuthUser, id: string, status: ApplicationStatus) {
     const app = await this.findApplication(user.tenantId, id);
     if (app.status === status) return this.prisma.application.findUniqueOrThrow({ where: { id }, select: APPLICATION_FIELDS });
-    const updated = await this.prisma.application.update({ where: { id }, data: { status }, select: APPLICATION_FIELDS });
+    const updated = await this.workflow.moveToCategory(user, id, status);
 
     if (NOTIFY_CANDIDATE.includes(status)) {
       await this.email.send({
@@ -178,10 +184,20 @@ export class HiringService {
     if (start.getTime() < Date.now()) throw new BadRequestException('Interview time must be in the future');
     const end = new Date(start.getTime() + dto.durationMinutes * 60_000);
 
+    if (app.status !== 'INTERVIEW') await this.workflow.moveToCategory(user, id, 'INTERVIEW');
     const updated = await this.prisma.application.update({
       where: { id },
       data: { status: 'INTERVIEW', interviewAt: start, interviewerEmail },
       select: APPLICATION_FIELDS,
+    });
+    await this.prisma.applicationEvent.create({
+      data: {
+        tenantId: user.tenantId,
+        applicationId: id,
+        actorUserId: user.userId,
+        type: 'INTERVIEW_SCHEDULED',
+        metadata: { startsAt: start.toISOString(), durationMinutes: dto.durationMinutes, interviewerEmail, location: dto.location ?? null },
+      },
     });
 
     const title = `Interview: ${app.candidateName} — ${app.job.title}`;
@@ -201,7 +217,7 @@ export class HiringService {
   }
 
   private async findApplication(tenantId: string, id: string) {
-    const app = await this.prisma.application.findFirst({ where: { id, tenantId }, include: { job: true, tenant: { select: { name: true } } } });
+    const app = await this.prisma.application.findFirst({ where: { id, tenantId }, include: { job: true, tenant: { select: { name: true } }, stage: true } });
     if (!app) throw new NotFoundException('Application not found');
     return app;
   }

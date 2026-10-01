@@ -52,6 +52,10 @@ model Tenant {
   employees          Employee[]
   jobs               Job[]
   applications       Application[]
+  hiringStages       HiringStage[]
+  applicationEvents  ApplicationEvent[]
+  assessmentIntegrations AssessmentIntegration[]
+  assessmentRequests AssessmentRequest[]
   leaves             LeaveRequest[]
   leaveBalanceLedger LeaveBalanceLedger[]
   leavePolicies      LeavePolicy[]
@@ -89,6 +93,7 @@ model User {
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   employee Employee?
+  applicationEvents ApplicationEvent[] @relation("ApplicationEventActor")
   delegatedApprovals     LeaveApprovalDelegation[] @relation("Delegate")
   approvalDelegations    LeaveApprovalDelegation[] @relation("Delegator")
 
@@ -345,6 +350,7 @@ model Application {
   id               String    @id @default(uuid())
   tenantId         String
   jobId            String
+  stageId          String?
   candidateName    String
   candidateEmail   String
   resumeUrl        String? // legacy, unused
@@ -362,10 +368,115 @@ model Application {
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   job    Job    @relation(fields: [jobId], references: [id])
+  stage  HiringStage? @relation(fields: [stageId], references: [id])
+  assessmentRequests AssessmentRequest[]
+  events ApplicationEvent[]
 
   @@unique([jobId, candidateEmail])
   @@index([jobId])
   @@index([tenantId, status])
+  @@index([tenantId, stageId])
+}
+
+/// Tenant-configurable stage within the recruiting pipeline. `category`
+/// preserves compatibility with the application status used by existing APIs.
+model HiringStage {
+  id        String   @id @default(uuid())
+  tenantId  String
+  key       String
+  name      String
+  category  String   // APPLIED, SCREENING, INTERVIEW, OFFERED, HIRED, REJECTED
+  position  Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  applications Application[]
+
+  @@unique([tenantId, key])
+  @@index([tenantId, isActive, position])
+}
+
+/// Immutable application history for recruiter actions, system events, and
+/// provider results. It is the source for the recruiter-facing timeline.
+model ApplicationEvent {
+  id            String   @id @default(uuid())
+  tenantId      String
+  applicationId String
+  actorUserId   String?
+  type          String
+  note          String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  application Application @relation(fields: [applicationId], references: [id])
+  actor       User?       @relation("ApplicationEventActor", fields: [actorUserId], references: [id])
+
+  @@index([tenantId, applicationId, createdAt])
+}
+
+/// Per-tenant connection metadata for a specialist assessment vendor. The
+/// shared webhook secret is encrypted at rest and is only revealed on rotation.
+model AssessmentIntegration {
+  id               String   @id @default(uuid())
+  tenantId         String
+  provider         String   // stable provider key, e.g. HACKERRANK or TESTGORILLA
+  displayName      String
+  webhookSecretEnc String
+  isActive         Boolean  @default(true)
+  config           Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant   Tenant                   @relation(fields: [tenantId], references: [id])
+  requests AssessmentRequest[]
+  events   AssessmentWebhookEvent[]
+
+  @@unique([tenantId, provider])
+  @@index([tenantId, isActive])
+}
+
+/// A vendor-hosted test linked to an application. The vendor owns the test;
+/// HRMS stores only the normalized lifecycle and optional result/report link.
+model AssessmentRequest {
+  id              String   @id @default(uuid())
+  tenantId        String
+  applicationId   String
+  integrationId   String
+  externalId      String?
+  status          String   @default("PENDING") // PENDING, COMPLETED, FAILED, EXPIRED
+  assessmentUrl   String?
+  score           Decimal? @db.Decimal(5, 2)
+  recommendation  String?
+  reportUrl       String?
+  requestedAt     DateTime @default(now())
+  completedAt     DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant      Tenant                @relation(fields: [tenantId], references: [id])
+  application Application           @relation(fields: [applicationId], references: [id])
+  integration AssessmentIntegration @relation(fields: [integrationId], references: [id])
+
+  @@unique([integrationId, externalId])
+  @@index([tenantId, applicationId, status])
+  @@index([integrationId, status])
+}
+
+/// Idempotency fence for vendor webhook deliveries. No raw candidate result is
+/// retained here; AssessmentRequest stores the normalized result only.
+model AssessmentWebhookEvent {
+  id            String   @id @default(uuid())
+  integrationId String
+  providerEventId String
+  receivedAt    DateTime @default(now())
+
+  integration AssessmentIntegration @relation(fields: [integrationId], references: [id])
+
+  @@unique([integrationId, providerEventId])
 }
 
 model Notification {

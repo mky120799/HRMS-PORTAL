@@ -24,6 +24,8 @@ export const DEFAULT_LEAVE_POLICIES = [
 export const JOB_STATUSES = ['OPEN', 'CLOSED'] as const;
 export const APPLICATION_STATUSES = ['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFERED', 'HIRED', 'REJECTED'] as const;
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
+export const ASSESSMENT_STATUSES = ['PENDING', 'COMPLETED', 'FAILED', 'EXPIRED'] as const;
+export type AssessmentStatus = (typeof ASSESSMENT_STATUSES)[number];
 
 export const PAYSLIP_STATUSES = ['DRAFT', 'FINALIZED'] as const;
 export const REVIEW_STATUSES = ['DRAFT', 'SELF_SUBMITTED', 'COMPLETED'] as const;
