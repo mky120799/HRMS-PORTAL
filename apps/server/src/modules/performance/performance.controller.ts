@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from 
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PerformanceService } from './performance.service';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { RequiresPlan } from '../../common/decorators/plan.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -25,25 +25,25 @@ export class PerformanceController {
   }
 
   @Get('team')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('performance.team.read')
   team(@CurrentUser() user: AuthUser) {
     return this.performance.team(user);
   }
 
   @Get('all')
-  @Roles('ADMIN')
+  @Permissions('performance.manage')
   all(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(allQuery)) q: z.infer<typeof allQuery>) {
     return this.performance.all(user.tenantId, q.cycleName);
   }
 
   @Get('cycles')
-  @Roles('ADMIN')
+  @Permissions('performance.manage')
   cycles(@CurrentUser() user: AuthUser) {
     return this.performance.cycles(user.tenantId);
   }
 
   @Post('cycle')
-  @Roles('ADMIN')
+  @Permissions('performance.manage')
   openCycle(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(cycleSchema)) dto: z.infer<typeof cycleSchema>) {
     return this.performance.openCycle(user.tenantId, dto.cycleName);
   }
@@ -54,7 +54,7 @@ export class PerformanceController {
   }
 
   @Patch(':id/manager')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('performance.review')
   submitManager(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(managerSchema)) dto: z.infer<typeof managerSchema>) {
     return this.performance.submitManager(user, id, dto.managerRating, dto.comments);
   }

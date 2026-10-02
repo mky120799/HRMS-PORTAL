@@ -16,6 +16,6 @@ newValues, ipAddress, userAgent, requestId, createdAt)`:
    `TENANT_SUSPENDED/REACTIVATED`.
 
 Audit writes never fail the user's request (errors are logged). `GET /audit?resource&userId&page`
-is ADMIN-only and tenant-scoped. The table is append-only from the application's point of view
+requires `audit.read` and is tenant-scoped. The table is append-only from the application's point of view
 (no update/delete code paths). For tamper-evidence, ship logs to write-once storage (e.g. S3
 Object Lock) — see roadmap.

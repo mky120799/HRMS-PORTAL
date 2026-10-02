@@ -225,7 +225,7 @@ would send a false notification. The outbox prevents that failure mode.
 
 | Method and path                            | Access           | Purpose                                                                                                                        |
 | ------------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /notifications`                       | Authenticated    | `mine` returns the user's in-app inbox; administrator `all` returns the tenant delivery log. Supports `category` and `unread`. |
+| `GET /notifications`                       | Authenticated    | `mine` returns the user's in-app inbox; `notifications.manage` with `all` returns the tenant delivery log. Supports `category` and `unread`. |
 | `GET /notifications/unread-count`          | Authenticated    | Lightweight count for the navigation badge.                                                                                    |
 | `SSE /notifications/stream`                | Authenticated    | Server-Sent Events stream for inbox changes.                                                                                    |
 | `PUT /notifications/:id/read`              | Recipient        | Marks one in-app notification read.                                                                                            |
@@ -236,19 +236,19 @@ would send a false notification. The outbox prevents that failure mode.
 | `PUT /notifications/preferences`           | Authenticated    | Upserts one event/channel preference.                                                                                          |
 | `GET /notifications/settings`              | Authenticated    | Returns the current user's quiet-hour and digest settings.                                                                      |
 | `PUT /notifications/settings`              | Authenticated    | Updates quiet-hour and digest settings.                                                                                        |
-| `POST /notifications/compose-email`        | ADMIN, 30/minute | Sends only to an active member of the same tenant.                                                                             |
-| `POST /notifications/announce`             | ADMIN, 5/hour    | Compatibility endpoint that creates an immediate or scheduled campaign for up to 1,000 recipients.                             |
-| `POST /notifications/campaigns`            | ADMIN, 20/hour   | Creates an immediate or scheduled announcement and snapshots its audience.                                                     |
-| `GET /notifications/campaigns`             | ADMIN            | Lists the 50 most recent campaigns and their progress.                                                                         |
-| `GET /notifications/campaigns/:id`         | ADMIN            | Returns campaign details and the first 100 recipient results.                                                                  |
-| `POST /notifications/campaigns/:id/cancel` | ADMIN            | Cancels a campaign that has not started processing.                                                                            |
-| `GET /notifications/operations`            | ADMIN            | Returns grouped delivery, outbox and campaign health plus recent failures.                                                     |
-| `POST /notifications/deliveries/:id/retry` | ADMIN            | Safely requeues a failed platform email using its preserved outbox payload.                                                    |
-| `GET /notifications/suppressions`          | ADMIN            | Lists active bounce/complaint/manual suppressions.                                                                             |
-| `POST /notifications/suppressions/:id/unsuppress` | ADMIN     | Deactivates a suppression after administrator review.                                                                           |
-| `GET /notifications/templates`             | ADMIN            | Lists tenant email template versions.                                                                                          |
-| `POST /notifications/templates`            | ADMIN            | Creates a new template version, optionally active immediately.                                                                  |
-| `POST /notifications/templates/:id/activate` | ADMIN          | Activates a previous template version and deactivates the prior active version.                                                 |
+| `POST /notifications/compose-email`        | `notifications.manage`, 30/minute | Sends only to an active member of the same tenant.                                                                             |
+| `POST /notifications/announce`             | `notifications.manage`, 5/hour    | Compatibility endpoint that creates an immediate or scheduled campaign for up to 1,000 recipients.                             |
+| `POST /notifications/campaigns`            | `notifications.manage`, 20/hour   | Creates an immediate or scheduled announcement and snapshots its audience.                                                     |
+| `GET /notifications/campaigns`             | `notifications.manage`            | Lists the 50 most recent campaigns and their progress.                                                                         |
+| `GET /notifications/campaigns/:id`         | `notifications.manage`            | Returns campaign details and the first 100 recipient results.                                                                  |
+| `POST /notifications/campaigns/:id/cancel` | `notifications.manage`            | Cancels a campaign that has not started processing.                                                                            |
+| `GET /notifications/operations`            | `notifications.manage`            | Returns grouped delivery, outbox and campaign health plus recent failures.                                                     |
+| `POST /notifications/deliveries/:id/retry` | `notifications.manage`            | Safely requeues a failed platform email using its preserved outbox payload.                                                    |
+| `GET /notifications/suppressions`          | `notifications.manage`            | Lists active bounce/complaint/manual suppressions.                                                                             |
+| `POST /notifications/suppressions/:id/unsuppress` | `notifications.manage`     | Deactivates a suppression after administrator review.                                                                           |
+| `GET /notifications/templates`             | `notifications.manage`            | Lists tenant email template versions.                                                                                          |
+| `POST /notifications/templates`            | `notifications.manage`            | Creates a new template version, optionally active immediately.                                                                  |
+| `POST /notifications/templates/:id/activate` | `notifications.manage`          | Activates a previous template version and deactivates the prior active version.                                                 |
 | `POST /notifications/email/webhook`        | Public HMAC      | SES delivery/bounce/complaint callback endpoint.                                                                               |
 
 ## Email pipeline

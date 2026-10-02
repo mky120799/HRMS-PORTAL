@@ -2,7 +2,7 @@ import { Controller, Delete, Get, Param, ParseUUIDPipe, Post, StreamableFile } f
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { GdprService } from './gdpr.service';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions, RequireStepUp } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 
 @ApiTags('Privacy')
@@ -23,13 +23,14 @@ export class GdprController {
   }
 
   @Post('employees/:id/erase')
-  @Roles('ADMIN')
+  @RequireStepUp()
+  @Permissions('employees.offboard')
   erase(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.gdpr.eraseEmployee(user, id);
   }
 
   @Delete('applications/:id')
-  @Roles('ADMIN')
+  @Permissions('hiring.pipeline.manage')
   deleteApplication(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.gdpr.deleteApplication(user, id);
   }

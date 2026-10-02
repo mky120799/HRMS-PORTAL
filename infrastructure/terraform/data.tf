@@ -81,6 +81,38 @@ resource "aws_mq_broker" "main" {
   }
 }
 
+# ─── Redis (ElastiCache) — shared rate-limit counters ────────────────────────
+# Every API task must see the same counters, otherwise each task enforces its
+# own limit and N tasks allow N× the attempts. Small and cheap: counters only.
+resource "random_password" "redis" {
+  length  = 48
+  special = false
+}
+
+resource "aws_elasticache_subnet_group" "main" {
+  name       = "${local.name}-redis"
+  subnet_ids = aws_subnet.private[*].id
+}
+
+resource "aws_elasticache_replication_group" "main" {
+  replication_group_id       = "${local.name}-redis"
+  description                = "HRMS shared rate limiting"
+  engine                     = "redis"
+  engine_version             = "7.1"
+  node_type                  = var.redis_node_type
+  num_cache_clusters         = var.redis_nodes
+  automatic_failover_enabled = var.redis_nodes > 1
+  multi_az_enabled           = var.redis_nodes > 1
+  port                       = 6379
+  subnet_group_name          = aws_elasticache_subnet_group.main.name
+  security_group_ids         = [aws_security_group.redis.id]
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
+  auth_token                 = random_password.redis.result
+  auto_minor_version_upgrade = true
+  apply_immediately          = false
+}
+
 # ─── S3 — private documents & resumes ─────────────────────────────────────────
 resource "aws_s3_bucket" "files" {
   bucket = var.s3_bucket_name

@@ -7,7 +7,7 @@ import { CheckCircle, XCircle, Clock, Plus, Ban } from 'lucide-react';
 import { api, type Paged } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
-import { getAuth } from '../lib/auth';
+import { hasPermission } from '../lib/auth';
 import { fmtDay } from '../lib/format';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -31,7 +31,22 @@ type Leave = {
 type Balance = { type: string; isPaid: boolean; quota: number | null; used: number; pending: number; remaining: number | null };
 type Policy = { type: string; isPaid: boolean; annualQuota: number; accrualMode: string; carryForwardLimit?: number | null; allowNegative: boolean };
 type LedgerEntry = { id: string; type: string; event: string; days: number | string; createdAt: string; metadata?: { reason?: string } | null };
-type ApprovalRule = { step: number; approverKind: 'DIRECT_MANAGER' | 'ROLE' | 'SPECIFIC_USER'; approverRole?: 'ADMIN' | 'MANAGER' | 'EMPLOYEE'; approverUserId?: string };
+type ApprovalRule = { step: number; approverKind: 'DIRECT_MANAGER' | 'ROLE' | 'SPECIFIC_USER'; approverRole?: string; approverUserId?: string };
+
+const APPROVER_ROLE_OPTIONS = [
+  'ADMIN',
+  'HR_ADMIN',
+  'HR_MANAGER',
+  'PAYROLL_ADMIN',
+  'RECRUITER',
+  'HIRING_MANAGER',
+  'INTERVIEWER',
+  'MANAGER',
+  'EMPLOYEE',
+  'AUDITOR',
+  'FINANCE',
+  'IT_ADMIN',
+];
 
 const schema = z
   .object({
@@ -61,10 +76,9 @@ function StatusBadge({ status }: { status: string }) {
 export function LeavePage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
-  const role = getAuth()?.user.role;
-  const isAdmin = role === 'ADMIN';
-  const canReview = role === 'ADMIN' || role === 'MANAGER';
-  const [reviewScope, setReviewScope] = useState<'team' | 'all'>(role === 'ADMIN' ? 'all' : 'team');
+  const canAdminLeave = hasPermission(['leave.admin']);
+  const canReview = hasPermission(['leave.review']);
+  const [reviewScope, setReviewScope] = useState<'team' | 'all'>(canAdminLeave ? 'all' : 'team');
   const [adminType, setAdminType] = useState('ANNUAL');
   const [adjustment, setAdjustment] = useState({ employeeId: '', type: 'ANNUAL', days: '', reason: '' });
   const [rulesDraft, setRulesDraft] = useState<ApprovalRule[]>([{ step: 1, approverKind: 'DIRECT_MANAGER' }]);
@@ -72,8 +86,8 @@ export function LeavePage() {
   const policies = useQuery({ queryKey: ['leave-policies'], queryFn: async () => (await api.get<Policy[]>('/leave-policies')).data });
   const balance = useQuery({ queryKey: ['leave', 'balance'], queryFn: async () => (await api.get<Balance[]>('/leave-requests/balance')).data });
   const ledger = useQuery({ queryKey: ['leave', 'ledger'], queryFn: async () => (await api.get<LedgerEntry[]>('/leave-balance-ledger')).data });
-  const policyVersions = useQuery({ queryKey: ['leave-policy-versions', adminType], enabled: isAdmin, queryFn: async () => (await api.get<Policy[]>(`/leave-policies/${adminType}/versions`)).data });
-  const approvalRules = useQuery({ queryKey: ['leave-approval-rules'], enabled: isAdmin, queryFn: async () => (await api.get<Array<ApprovalRule & { type: string }>>('/leave-approval-rules')).data });
+  const policyVersions = useQuery({ queryKey: ['leave-policy-versions', adminType], enabled: canAdminLeave, queryFn: async () => (await api.get<Policy[]>(`/leave-policies/${adminType}/versions`)).data });
+  const approvalRules = useQuery({ queryKey: ['leave-approval-rules'], enabled: canAdminLeave, queryFn: async () => (await api.get<Array<ApprovalRule & { type: string }>>('/leave-approval-rules')).data });
   const mine = useQuery({ queryKey: ['leave', 'mine'], queryFn: async () => (await api.get<Paged<Leave>>('/leave-requests', { params: { scope: 'mine', pageSize: 50 } })).data });
   const pending = useQuery({
     queryKey: ['leave', 'review', reviewScope],
@@ -261,7 +275,7 @@ export function LeavePage() {
               <CardTitle>Awaiting your approval</CardTitle>
               <CardDescription>{reviewScope === 'team' ? 'Your direct reports' : 'Everyone in the workspace'}</CardDescription>
             </div>
-            {role === 'ADMIN' && (
+            {canAdminLeave && (
               <select className="h-9 rounded-md border bg-white/70 px-2 text-sm" value={reviewScope} onChange={(e) => setReviewScope(e.target.value as 'team' | 'all')}>
                 <option value="all">All employees</option>
                 <option value="team">My team</option>
@@ -338,7 +352,7 @@ export function LeavePage() {
         </CardContent>
       </Card>
 
-      {isAdmin && (
+      {canAdminLeave && (
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="bg-white/50 backdrop-blur-xl">
             <CardHeader><CardTitle>Approval workflow</CardTitle><CardDescription>Rules are snapshotted when an employee submits a request.</CardDescription></CardHeader>
@@ -353,7 +367,7 @@ export function LeavePage() {
                     <option value="DIRECT_MANAGER">Direct manager</option><option value="ROLE">Role</option><option value="SPECIFIC_USER">Named user</option>
                   </select>
                   {rulesDraft.length > 1 && <Button variant="ghost" size="sm" onClick={() => setRulesDraft((rules) => rules.filter((_, i) => i !== index).map((item, i) => ({ ...item, step: i + 1 })))}>Remove</Button>}
-                  {rule.approverKind === 'ROLE' && <select className="col-start-2 h-10 rounded-md border bg-white/70 px-3 text-sm" value={rule.approverRole ?? 'MANAGER'} onChange={(e) => setRulesDraft((rules) => rules.map((item, i) => i === index ? { ...item, approverRole: e.target.value as ApprovalRule['approverRole'] } : item))}><option value="MANAGER">Manager</option><option value="ADMIN">Administrator</option><option value="EMPLOYEE">Employee</option></select>}
+                  {rule.approverKind === 'ROLE' && <select className="col-start-2 h-10 rounded-md border bg-white/70 px-3 text-sm" value={rule.approverRole ?? 'MANAGER'} onChange={(e) => setRulesDraft((rules) => rules.map((item, i) => i === index ? { ...item, approverRole: e.target.value } : item))}>{APPROVER_ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}</select>}
                   {rule.approverKind === 'SPECIFIC_USER' && <Input className="col-start-2" placeholder="Approver user UUID" value={rule.approverUserId ?? ''} onChange={(e) => setRulesDraft((rules) => rules.map((item, i) => i === index ? { ...item, approverUserId: e.target.value } : item))} />}
                 </div>
               ))}

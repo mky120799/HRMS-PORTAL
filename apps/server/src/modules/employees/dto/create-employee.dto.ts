@@ -31,4 +31,8 @@ export const listEmployeesSchema = paginationSchema.extend({
 export type ListEmployeesQuery = z.infer<typeof listEmployeesSchema>;
 
 export const offboardSchema = z.object({ exitDate: isoDate });
-export const changeRoleSchema = z.object({ role: z.enum(TENANT_ROLES) });
+/** Assign either a built-in role or a workspace custom role. */
+export const changeRoleSchema = z
+  .object({ role: z.enum(TENANT_ROLES).optional(), customRoleId: z.string().uuid().optional() })
+  .refine((value) => !!value.role !== !!value.customRoleId, 'Provide either role or customRoleId');
+export type ChangeRoleDto = z.infer<typeof changeRoleSchema>;

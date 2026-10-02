@@ -49,12 +49,12 @@ gross 40,000; PF 1,800; deductions 3,500; **net 36,500**.
 | Method & path | Access | Plan |
 | --- | --- | --- |
 | `GET /payroll/my-payslips` | user (FINALIZED only) | BASIC |
-| `GET /payroll/payslips/:id/pdf` | owner (finalized) or ADMIN | BASIC |
-| `GET /payroll/salaries` | ADMIN | BASIC |
-| `PUT /payroll/salaries/:employeeId` | ADMIN — audited with old/new values | BASIC |
-| `GET /payroll/runs?month&year` | ADMIN — totals + payslips + status | BASIC |
-| `POST /payroll/runs/generate` | ADMIN | BASIC |
-| `POST /payroll/runs/finalize` | ADMIN — audited | BASIC |
+| `GET /payroll/payslips/:id/pdf` | owner (finalized) or `payroll.read` | BASIC |
+| `GET /payroll/salaries` | `payroll.salary.manage` | BASIC |
+| `PUT /payroll/salaries/:employeeId` | `payroll.salary.manage` — audited with old/new values | BASIC |
+| `GET /payroll/runs?month&year` | `payroll.read` or `payroll.run.manage` — totals + payslips + status | BASIC |
+| `POST /payroll/runs/generate` | `payroll.run.manage` | BASIC |
+| `POST /payroll/runs/finalize` | `payroll.finalize` — audited | BASIC |
 
 ## Rules
 * Future months cannot be run; finalized months cannot be regenerated (409).

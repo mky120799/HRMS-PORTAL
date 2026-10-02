@@ -5,7 +5,7 @@ import type { RawBodyRequest } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { StripeService } from './stripe.service';
-import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions, Public } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { PAID_PLANS, type PaidPlan } from '../../common/subscription/subscription-plans';
@@ -24,13 +24,13 @@ export class BillingController {
   }
 
   @Post('checkout')
-  @Roles('ADMIN')
+  @Permissions('tenant.billing.manage')
   checkout(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(checkoutSchema)) dto: { plan: PaidPlan }) {
     return this.stripe.createCheckout(user, dto.plan);
   }
 
   @Post('portal')
-  @Roles('ADMIN')
+  @Permissions('tenant.billing.manage')
   portal(@CurrentUser() user: AuthUser) {
     return this.stripe.createPortal(user);
   }

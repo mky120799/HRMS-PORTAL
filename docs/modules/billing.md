@@ -22,8 +22,8 @@ Routes declare `@RequiresPlan('BASIC')` etc.; the global `SubscriptionGuard` ret
 | Method & path | Access |
 | --- | --- |
 | `GET /billing/plans` | user — which plans are purchasable in this deployment |
-| `POST /billing/checkout` `{ plan }` | ADMIN — Stripe Checkout URL |
-| `POST /billing/portal` | ADMIN — Stripe Customer Portal (change plan, card, invoices, cancel) |
+| `POST /billing/checkout` `{ plan }` | `tenant.billing.manage` — Stripe Checkout URL |
+| `POST /billing/portal` | `tenant.billing.manage` — Stripe Customer Portal (change plan, card, invoices, cancel) |
 | `POST /stripe/webhook` | Stripe only (signature-verified), no JWT, no throttling |
 
 ## Rules

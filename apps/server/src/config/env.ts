@@ -16,6 +16,12 @@ export const envSchema = z
 
     DATABASE_URL: z.string().min(1),
     RABBITMQ_URL: z.string().url().default('amqp://guest:guest@localhost:5672'),
+    // Shared rate-limit counters; in-memory per instance when unset (development only).
+    REDIS_URL: z
+      .string()
+      .regex(/^rediss?:\/\//, 'must be a redis:// or rediss:// URL')
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
 
     // Root secret; purpose-specific signing keys are derived from it (see TokenService).
     JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
@@ -25,10 +31,15 @@ export const envSchema = z
       .refine((v) => Buffer.from(v, 'base64').length === 32, 'ENCRYPTION_KEY must be 32 bytes, base64 encoded'),
 
     FRONTEND_URL: z.string().url().default('http://localhost:5173'),
+    API_PUBLIC_URL: optionalUrl,
     CORS_ORIGINS: z.string().default('http://localhost:5173'),
     TRUST_PROXY: z
       .enum(['true', 'false'])
       .default('false')
+      .transform((v) => v === 'true'),
+    PUBLIC_SIGNUP_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
       .transform((v) => v === 'true'),
     ENABLE_SWAGGER: z
       .enum(['true', 'false'])
@@ -56,6 +67,12 @@ export const envSchema = z
     GOOGLE_CLIENT_ID: optionalString,
     GOOGLE_CLIENT_SECRET: optionalString,
     GOOGLE_CALLBACK_URL: optionalUrl,
+    OIDC_CALLBACK_URL: optionalUrl,
+    // Development/test only: let OIDC issuers live on localhost/private networks (e.g. a local Keycloak).
+    ALLOW_PRIVATE_IDP_URLS: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
 
     STRIPE_SECRET_KEY: optionalString,
     STRIPE_WEBHOOK_SECRET: optionalString,
@@ -66,6 +83,10 @@ export const envSchema = z
     SENTRY_DSN: optionalUrl,
   })
   .superRefine((env, ctx) => {
+    // Credentialed CORS (the refresh cookie) must never be combined with a wildcard origin.
+    if (env.CORS_ORIGINS.split(',').some((origin) => origin.trim() === '*')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['CORS_ORIGINS'], message: 'must list explicit origins, not "*"' });
+    }
     if (env.NODE_ENV !== 'production') return;
     const require = (key: keyof typeof env, message: string) => {
       if (!env[key]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message });
@@ -74,12 +95,22 @@ export const envSchema = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['STORAGE_DRIVER'], message: 'must be "s3" in production (container disks are ephemeral)' });
     }
     require('AWS_S3_BUCKET_NAME', 'required when STORAGE_DRIVER=s3');
+    require('REDIS_URL', 'required in production so rate limits are shared by every API instance');
     if (env.EMAIL_DRIVER !== 'ses') {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['EMAIL_DRIVER'], message: 'must be "ses" in production' });
     }
     require('EMAIL_WEBHOOK_SECRET', 'required for SES delivery/bounce/complaint callbacks');
     if (env.FRONTEND_URL.startsWith('http://')) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['FRONTEND_URL'], message: 'must use https in production' });
+    }
+    if (env.API_PUBLIC_URL?.startsWith('http://')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['API_PUBLIC_URL'], message: 'must use https in production' });
+    }
+    if (env.ALLOW_PRIVATE_IDP_URLS) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['ALLOW_PRIVATE_IDP_URLS'], message: 'must be false in production (SSRF protection)' });
+    }
+    if (env.OIDC_CALLBACK_URL?.startsWith('http://')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['OIDC_CALLBACK_URL'], message: 'must use https in production' });
     }
   });
 

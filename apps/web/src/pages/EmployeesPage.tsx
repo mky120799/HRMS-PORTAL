@@ -3,11 +3,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Plus, Search, Mail, UserMinus } from 'lucide-react';
+import { Plus, Search, Mail, UserMinus, ShieldOff, LogOut } from 'lucide-react';
 import { api, type Paged } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
-import { getAuth } from '../lib/auth';
+import { hasPermission } from '../lib/auth';
+import { useRoleCatalog } from '../components/CustomRolesPanel';
 import { fmtDay, todayIso } from '../lib/format';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -42,15 +43,35 @@ type Employee = {
   dateOfJoining?: string | null;
   userId?: string | null;
   manager?: { firstName: string; lastName: string } | null;
-  user?: { role: string; isActive: boolean } | null;
+  user?: { role: string; isActive: boolean; customRoleId?: string | null; roleManagedBy?: string | null } | null;
 };
+
+const ROLE_OPTIONS = [
+  ['EMPLOYEE', 'Employee'],
+  ['MANAGER', 'Manager'],
+  ['HR_MANAGER', 'HR manager'],
+  ['HR_ADMIN', 'HR admin'],
+  ['PAYROLL_ADMIN', 'Payroll admin'],
+  ['RECRUITER', 'Recruiter'],
+  ['HIRING_MANAGER', 'Hiring manager'],
+  ['INTERVIEWER', 'Interviewer'],
+  ['FINANCE', 'Finance'],
+  ['AUDITOR', 'Auditor'],
+  ['IT_ADMIN', 'IT admin'],
+  ['ADMIN', 'Admin'],
+] as const;
 
 export function EmployeesPage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
-  const isAdmin = getAuth()?.user.role === 'ADMIN';
+  const canManageEmployees = hasPermission(['employees.manage']);
+  const canManageRoles = hasPermission(['employees.roles.manage']);
+  const canManageSecurity = hasPermission(['security.manage']);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+
+  const roleCatalog = useRoleCatalog(canManageRoles);
+  const customRoles = roleCatalog.data?.custom ?? [];
 
   const list = useQuery({
     queryKey: ['employees', search, page],
@@ -58,7 +79,7 @@ export function EmployeesPage() {
   });
   const managers = useQuery({
     queryKey: ['employees', 'all-active'],
-    enabled: isAdmin,
+    enabled: canManageEmployees,
     queryFn: async () => (await api.get<Paged<Employee>>('/employees', { params: { status: 'ACTIVE', pageSize: 100 } })).data.items,
   });
 
@@ -93,10 +114,25 @@ export function EmployeesPage() {
     onError,
   });
   const changeRole = useMutation({
-    mutationFn: async ({ id, role }: { id: string; role: string }) => api.patch(`/employees/${id}/role`, { role }),
+    // Option values are a built-in role or "custom:<id>".
+    mutationFn: async ({ id, role }: { id: string; role: string }) =>
+      api.patch(`/employees/${id}/role`, role.startsWith('custom:') ? { customRoleId: role.slice(7) } : { role }),
     onSuccess: () => {
       refresh();
       showToast('Role updated', 'success');
+    },
+    onError,
+  });
+  const forceLogout = useMutation({
+    mutationFn: async (e: Employee) => api.post(`/auth/users/${e.userId}/revoke-sessions`),
+    onSuccess: () => showToast('User sessions revoked', 'success'),
+    onError,
+  });
+  const resetMfa = useMutation({
+    mutationFn: async (e: Employee) => api.post(`/auth/users/${e.userId}/reset-mfa`),
+    onSuccess: () => {
+      refresh();
+      showToast('MFA reset and sessions revoked', 'success');
     },
     onError,
   });
@@ -107,7 +143,7 @@ export function EmployeesPage() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">{isAdmin ? 'Employee Roster' : 'Company Directory'}</h2>
+          <h2 className="text-3xl font-bold tracking-tight">{canManageEmployees ? 'Employee Roster' : 'Company Directory'}</h2>
           <p className="text-muted-foreground mt-2">{list.data?.total ?? 0} people</p>
         </div>
         <div className="relative w-full md:w-[300px]">
@@ -124,8 +160,8 @@ export function EmployeesPage() {
         </div>
       </div>
 
-      <div className={`grid gap-6 ${isAdmin ? 'lg:grid-cols-3' : ''}`}>
-        {isAdmin && (
+      <div className={`grid gap-6 ${canManageEmployees ? 'lg:grid-cols-3' : ''}`}>
+        {canManageEmployees && (
           <Card className="lg:col-span-1 bg-white/50 backdrop-blur-xl h-fit">
             <CardHeader>
               <CardTitle>Add Employee</CardTitle>
@@ -189,16 +225,16 @@ export function EmployeesPage() {
           </Card>
         )}
 
-        <Card className={`${isAdmin ? 'lg:col-span-2' : ''} bg-white/50 backdrop-blur-xl overflow-hidden`}>
+        <Card className={`${canManageEmployees ? 'lg:col-span-2' : ''} bg-white/50 backdrop-blur-xl overflow-hidden`}>
           <CardContent className="p-0">
             <Table>
               <TableHeader className="bg-slate-50/50">
                 <TableRow>
                   <TableHead className="pl-6">Employee</TableHead>
                   <TableHead>Department</TableHead>
-                  {isAdmin && <TableHead>Joined</TableHead>}
-                  {isAdmin && <TableHead>Access</TableHead>}
-                  {isAdmin && <TableHead className="text-right pr-6">Actions</TableHead>}
+                  {canManageEmployees && <TableHead>Joined</TableHead>}
+                  {canManageEmployees && <TableHead>Access</TableHead>}
+                  {canManageEmployees && <TableHead className="text-right pr-6">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -221,31 +257,56 @@ export function EmployeesPage() {
                       </div>
                     </TableCell>
                     <TableCell>{e.department ?? <span className="text-muted-foreground italic text-sm">Unassigned</span>}</TableCell>
-                    {isAdmin && <TableCell className="text-sm">{fmtDay(e.dateOfJoining)}</TableCell>}
-                    {isAdmin && (
+                    {canManageEmployees && <TableCell className="text-sm">{fmtDay(e.dateOfJoining)}</TableCell>}
+                    {canManageEmployees && (
                       <TableCell>
                         {e.user ? (
-                          <select
-                            className="h-8 rounded-md border bg-white/70 px-2 text-xs"
-                            value={e.user.role}
-                            disabled={e.status === 'EXITED'}
-                            onChange={(ev) => changeRole.mutate({ id: e.id, role: ev.target.value })}
-                          >
-                            <option value="EMPLOYEE">Employee</option>
-                            <option value="MANAGER">Manager</option>
-                            <option value="ADMIN">Admin</option>
-                          </select>
+                          <div className="flex items-center gap-1">
+                            <select
+                              className="h-8 rounded-md border bg-white/70 px-2 text-xs"
+                              value={e.user.customRoleId ? `custom:${e.user.customRoleId}` : e.user.role}
+                              disabled={e.status === 'EXITED' || !canManageRoles}
+                              onChange={(ev) => changeRole.mutate({ id: e.id, role: ev.target.value })}
+                            >
+                              {ROLE_OPTIONS.map(([value, label]) => (
+                                <option key={value} value={value}>{label}</option>
+                              ))}
+                              {customRoles
+                                .filter((role) => role.isActive || role.id === e.user?.customRoleId)
+                                .map((role) => (
+                                  <option key={role.id} value={`custom:${role.id}`} disabled={!role.isActive}>
+                                    {role.name} (custom)
+                                  </option>
+                                ))}
+                              {e.user.customRoleId && !customRoles.some((role) => role.id === e.user?.customRoleId) && (
+                                <option value={`custom:${e.user.customRoleId}`}>Custom role</option>
+                              )}
+                            </select>
+                            {e.user.roleManagedBy?.startsWith('idp:') && (
+                              <Badge variant="outline" className="text-[10px]" title="Set by your identity provider's group mapping">IdP</Badge>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">No login</span>
                         )}
                       </TableCell>
                     )}
-                    {isAdmin && (
+                    {canManageEmployees && (
                       <TableCell className="text-right pr-6 space-x-1">
                         {!e.userId && e.status !== 'EXITED' && (
                           <Button variant="ghost" size="sm" onClick={() => invite.mutate(e)} disabled={invite.isPending}>
                             <Mail size={14} className="mr-1" /> Invite
                           </Button>
+                        )}
+                        {canManageSecurity && e.userId && e.status !== 'EXITED' && (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => forceLogout.mutate(e)} disabled={forceLogout.isPending}>
+                              <LogOut size={14} className="mr-1" /> Force logout
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => window.confirm(`Reset MFA for ${e.firstName}? They will need to enroll again.`) && resetMfa.mutate(e)} disabled={resetMfa.isPending}>
+                              <ShieldOff size={14} className="mr-1" /> Reset MFA
+                            </Button>
+                          </>
                         )}
                         {e.status !== 'EXITED' && (
                           <Button

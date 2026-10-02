@@ -15,8 +15,8 @@ points to code you can open during the interview.
 > The part I'm proudest of is taking it from a demo to production: I audited it, found
 > critical issues — anyone could make themselves admin of any customer, tokens could be swapped
 > to read every tenant's data, the prod container couldn't even start — fixed them, and locked
-> each fix in with a regression test. It now has 98 automated tests, including a security suite
-> that attacks the API the way I found it could be attacked."
+> each fix in with a regression test. It now has 165 automated tests, including security and
+> authentication suites that attack the API the way I found it could be attacked."
 
 ## 2. Architecture in five sentences
 1. Modular monolith: one deployable, feature modules with controller → service → Prisma. ([ARCHITECTURE.md](ARCHITECTURE.md))
@@ -93,8 +93,9 @@ Password change or admin offboarding bumps `tokenVersion` and kills everything.
 **GDPR/DPDP?** Self-service export, erasure after offboarding (keeping statutory payroll
 records), candidate deletion, consent on applications, audit trail, encryption at rest/in transit.
 
-**What would you do next?** httpOnly refresh cookie, Redis rate limiting, RLS, deeper statutory
-payroll, separate worker service. ([PRODUCTION_PLAN.md](PRODUCTION_PLAN.md#4-roadmap))
+**What would you do next?** Redis rate limiting, RLS, deeper statutory payroll, separate
+worker service. (The httpOnly refresh cookie, step-up MFA and instant session revocation are
+already done — see [modules/auth.md](modules/auth.md#interview-talking-points).) ([PRODUCTION_PLAN.md](PRODUCTION_PLAN.md#4-roadmap))
 
 ## 6. Module one-liners
 * **Auth** — purpose-bound JWTs, rotation + reuse detection, lockout, TOTP, SSO without auto-provisioning.

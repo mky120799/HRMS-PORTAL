@@ -14,11 +14,11 @@ Employee documents (ID proofs, contracts, certificates) with expiry tracking.
 | Method & path | Access | Plan |
 | --- | --- | --- |
 | `GET /documents/me` | user | BASIC |
-| `GET /documents?employeeId` | ADMIN (all) / MANAGER (reports) | BASIC |
-| `GET /documents/expiring?days=30` | ADMIN | BASIC |
-| `POST /documents/upload` (multipart) | user; `employeeId` field admin-only | BASIC |
-| `GET /documents/:id/download` | owner or ADMIN | BASIC |
-| `DELETE /documents/:id` | owner or ADMIN | BASIC |
+| `GET /documents?employeeId` | `documents.team.read`; `documents.manage` can see all | BASIC |
+| `GET /documents/expiring?days=30` | `documents.manage` | BASIC |
+| `POST /documents/upload` (multipart) | user; `employeeId` field requires `documents.manage` | BASIC |
+| `GET /documents/:id/download` | owner or `documents.manage` | BASIC |
+| `DELETE /documents/:id` | owner or `documents.manage` | BASIC |
 
 ## Rules
 * **Content sniffing:** only PDF / PNG / JPEG accepted, identified by **magic bytes**

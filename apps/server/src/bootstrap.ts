@@ -23,10 +23,24 @@ export async function configureApp(app: NestFastifyApplication): Promise<void> {
     contentSecurityPolicy: false, // JSON API; the SPA's CSP is set by nginx
     crossOriginResourcePolicy: { policy: 'same-site' },
   });
+  // application/x-www-form-urlencoded (the SAML ACS POST) is parsed by Nest's own
+  // body parser; registering a second parser makes app.init() throw.
+  // SCIM clients (Okta, Entra ID) send JSON as application/scim+json.
+  app.getHttpAdapter()
+    .getInstance()
+    .addContentTypeParser('application/scim+json', { parseAs: 'string' }, (_request, body, done) => {
+      try {
+        done(null, body === '' ? {} : JSON.parse(String(body)));
+      } catch (error) {
+        done(Object.assign(error as Error, { statusCode: 400 }), undefined);
+      }
+    });
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 20 } });
 
   const origins = config.get('CORS_ORIGINS', { infer: true }).split(',').map((o) => o.trim()).filter(Boolean);
-  app.enableCors({ origin: origins, credentials: false, exposedHeaders: ['x-request-id', 'content-disposition'] });
+  // credentials: the refresh token travels in an httpOnly cookie (scoped to /api/v1/auth).
+  // Safe with an explicit origin allow-list; never combine with a wildcard origin.
+  app.enableCors({ origin: origins, credentials: true, exposedHeaders: ['x-request-id', 'content-disposition'] });
 
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.setGlobalPrefix('api/v1');

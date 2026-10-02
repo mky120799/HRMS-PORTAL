@@ -98,7 +98,11 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
             this.logger.error(
               `RabbitMQ consumer failure on ${queue}: ${message}`,
             );
-            channel.nack(raw, false, true);
+            try {
+              channel.nack(raw, false, true);
+            } catch {
+              // Channel already closing (shutdown): the broker redelivers unacked messages anyway.
+            }
           },
         );
       },

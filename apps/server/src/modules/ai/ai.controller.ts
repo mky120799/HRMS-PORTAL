@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { AiService } from './ai.service';
 import { LeavesService } from '../leaves/leaves.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { RequiresPlan } from '../../common/decorators/plan.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -40,7 +40,7 @@ export class AiController {
 
   /** Recruiter helper: extract structured details from a PDF resume. */
   @Post('parse-resume')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('hiring.read')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async parseResume(@Req() req: FastifyRequest) {
     const file = await readValidatedFile(await req.file(), { allowed: ['application/pdf'], maxBytes: 5 * 1024 * 1024 });

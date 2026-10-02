@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, 
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { LeavesService } from './leaves.service';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
@@ -73,13 +73,13 @@ export class LeavesController {
   }
 
   @Put('leave-policies')
-  @Roles('ADMIN')
+  @Permissions('leave.admin')
   upsertPolicy(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(upsertPolicySchema)) dto: z.infer<typeof upsertPolicySchema>) {
     return this.leaves.upsertPolicy(user.tenantId, dto);
   }
 
   @Get('leave-policies/:type/versions')
-  @Roles('ADMIN')
+  @Permissions('leave.admin')
   policyVersions(@CurrentUser() user: AuthUser, @Param('type') type: string) {
     return this.leaves.listPolicyVersions(user.tenantId, type.trim().toUpperCase());
   }
@@ -90,44 +90,44 @@ export class LeavesController {
   }
 
   @Post('holidays')
-  @Roles('ADMIN')
+  @Permissions('leave.admin')
   addHoliday(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(holidaySchema)) dto: z.infer<typeof holidaySchema>) {
     return this.leaves.addHoliday(user.tenantId, dto);
   }
 
   @Delete('holidays/:id')
-  @Roles('ADMIN')
+  @Permissions('leave.admin')
   removeHoliday(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.leaves.removeHoliday(user.tenantId, id);
   }
 
   /** Intended for a protected scheduler or an admin-operated recovery run. */
   @Post('leave-accruals/run')
-  @Roles('ADMIN')
+  @Permissions('leave.admin')
   accrue(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(accrualRunSchema)) dto: { year: number; month: number }) {
     return this.leaves.accrueMonthly(user.tenantId, dto.year, dto.month);
   }
 
   @Post('leave-carry-forward/run')
-  @Roles('ADMIN')
+  @Permissions('leave.admin')
   carryForward(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(carryForwardSchema)) dto: { year: number }) {
     return this.leaves.carryForward(user.tenantId, dto.year);
   }
 
   @Post('leave-balance-adjustments')
-  @Roles('ADMIN')
+  @Permissions('leave.admin')
   adjustBalance(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(adjustLeaveBalanceSchema)) dto: AdjustLeaveBalanceDto) {
     return this.leaves.adjustBalance(user, dto);
   }
 
   @Get('leave-approval-rules')
-  @Roles('ADMIN')
+  @Permissions('leave.admin')
   approvalRules(@CurrentUser() user: AuthUser) {
     return this.leaves.listApprovalRules(user.tenantId);
   }
 
   @Put('leave-approval-rules')
-  @Roles('ADMIN')
+  @Permissions('leave.admin')
   replaceApprovalRules(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(replaceApprovalRulesSchema)) dto: ReplaceApprovalRulesDto) {
     return this.leaves.replaceApprovalRules(user.tenantId, dto);
   }

@@ -18,7 +18,7 @@ import "react-quill/dist/quill.snow.css";
 import { API_BASE_URL, api, type Paged } from "../lib/api";
 import { getErrorMessage } from "../lib/errors";
 import { useToast } from "../lib/toast";
-import { getAuth } from "../lib/auth";
+import { getAuth, hasPermission } from "../lib/auth";
 import { fmtDate } from "../lib/format";
 
 import {
@@ -120,7 +120,7 @@ const fromTime = (value: string) => {
 export function NotificationsPage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
-  const isAdmin = getAuth()?.user.role === "ADMIN";
+  const canManageNotifications = hasPermission(["notifications.manage"]);
   const [scope, setScope] = useState<"mine" | "all">("mine");
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [mode, setMode] = useState<"announce" | "direct">("announce");
@@ -200,7 +200,7 @@ export function NotificationsPage() {
     queryKey: ["notifications", "campaigns"],
     queryFn: async () =>
       (await api.get<NotificationCampaign[]>("/notifications/campaigns")).data,
-    enabled: isAdmin,
+    enabled: canManageNotifications,
     refetchInterval: 10_000,
   });
 
@@ -208,7 +208,7 @@ export function NotificationsPage() {
     queryKey: ["notifications", "operations"],
     queryFn: async () =>
       (await api.get<NotificationOperations>("/notifications/operations")).data,
-    enabled: isAdmin,
+    enabled: canManageNotifications,
     refetchInterval: 15_000,
   });
 
@@ -217,14 +217,14 @@ export function NotificationsPage() {
     queryFn: async () =>
       (await api.get<NotificationSuppression[]>("/notifications/suppressions"))
         .data,
-    enabled: isAdmin,
+    enabled: canManageNotifications,
   });
 
   const templates = useQuery({
     queryKey: ["notifications", "templates"],
     queryFn: async () =>
       (await api.get<NotificationTemplate[]>("/notifications/templates")).data,
-    enabled: isAdmin,
+    enabled: canManageNotifications,
   });
 
   const send = useMutation({
@@ -374,7 +374,7 @@ export function NotificationsPage() {
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Notifications</h2>
         <p className="text-muted-foreground mt-2">
-          {isAdmin
+          {canManageNotifications
             ? "Your inbox, company announcements and the email delivery log."
             : "Messages and updates sent to you."}
         </p>
@@ -523,7 +523,7 @@ export function NotificationsPage() {
         </CardContent>
       </Card>
 
-      {isAdmin && (
+      {canManageNotifications && (
         <Card className="bg-white/50 backdrop-blur-xl">
           <CardHeader>
             <CardTitle>Delivery health</CardTitle>
@@ -554,8 +554,8 @@ export function NotificationsPage() {
         </Card>
       )}
 
-      <div className={`grid gap-6 ${isAdmin ? "lg:grid-cols-5" : ""}`}>
-        {isAdmin && (
+      <div className={`grid gap-6 ${canManageNotifications ? "lg:grid-cols-5" : ""}`}>
+        {canManageNotifications && (
           <Card className="lg:col-span-2 bg-white/50 backdrop-blur-xl h-fit">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -655,7 +655,7 @@ export function NotificationsPage() {
         )}
 
         <Card
-          className={`${isAdmin ? "lg:col-span-3" : ""} bg-white/50 backdrop-blur-xl`}
+          className={`${canManageNotifications ? "lg:col-span-3" : ""} bg-white/50 backdrop-blur-xl`}
         >
           <CardHeader className="flex flex-row items-center justify-between gap-3">
             <CardTitle className="flex items-center gap-2">
@@ -681,7 +681,7 @@ export function NotificationsPage() {
                   </Button>
                 </>
               )}
-              {isAdmin && (
+              {canManageNotifications && (
                 <select
                   className="h-9 rounded-md border bg-white/70 px-2 text-sm"
                   value={scope}
@@ -779,7 +779,7 @@ export function NotificationsPage() {
         </Card>
       </div>
 
-      {isAdmin && (
+      {canManageNotifications && (
         <Card className="bg-white/50 backdrop-blur-xl">
           <CardHeader>
             <CardTitle>Suppression list</CardTitle>
@@ -820,7 +820,7 @@ export function NotificationsPage() {
         </Card>
       )}
 
-      {isAdmin && (
+      {canManageNotifications && (
         <Card className="bg-white/50 backdrop-blur-xl">
           <CardHeader>
             <CardTitle>Email templates</CardTitle>
@@ -927,7 +927,7 @@ export function NotificationsPage() {
         </Card>
       )}
 
-      {isAdmin && (
+      {canManageNotifications && (
         <Card className="bg-white/50 backdrop-blur-xl">
           <CardHeader>
             <CardTitle>Announcement campaigns</CardTitle>

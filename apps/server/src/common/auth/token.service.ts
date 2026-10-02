@@ -9,12 +9,23 @@ import { createHmac } from 'crypto';
  * for one purpose (e.g. a password-reset link) can never be replayed as another
  * (e.g. an API access token). This closes "token confusion" attacks.
  */
-export type TokenPurpose = 'access' | 'refresh' | 'two_factor' | 'invite' | 'reset' | 'sso_state' | 'sso_exchange';
+export type TokenPurpose =
+  | 'access'
+  | 'refresh'
+  | 'two_factor'
+  | 'mfa_enroll'
+  | 'step_up'
+  | 'invite'
+  | 'reset'
+  | 'sso_state'
+  | 'sso_exchange';
 
 const LIFETIMES: Record<TokenPurpose, string> = {
   access: '15m',
   refresh: '7d',
   two_factor: '5m',
+  mfa_enroll: '15m', // MFA is required by policy but not set up yet: may only enrol, nothing else
+  step_up: '5m', // recent re-authentication for sensitive actions
   invite: '7d',
   reset: '1h',
   sso_state: '10m',

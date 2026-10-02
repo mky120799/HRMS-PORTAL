@@ -111,6 +111,27 @@ Current lifetime: 7 days.
 The refresh token is more sensitive than the access token because it can create
 new sessions.
 
+Where each token lives in the browser matters:
+
+- the **access token** (15 minutes) is kept by the web app and sent as
+  `Authorization: Bearer ...`;
+- the **refresh token** is set by the API as an `httpOnly`, `SameSite=Strict`
+  cookie limited to `/api/v1/auth`. JavaScript on the page cannot read it, so even
+  an XSS bug cannot steal a long-lived credential.
+
+Browser tabs share that cookie, so the web app takes a cross-tab lock before
+refreshing. Otherwise two tabs could present the same refresh token at once and
+the server would (correctly) treat the second one as theft.
+
+Enterprise systems also add two session limits:
+
+- **Absolute lifetime:** a session cannot live beyond a fixed maximum age.
+- **Idle timeout:** a session ends if it has not been used for a configured
+  number of minutes.
+
+In this portal, each refresh checks both limits. Refreshing rotates the token,
+but it does not extend a session beyond the absolute lifetime.
+
 ## 5. Refresh token rotation
 
 Refresh rotation means:
@@ -303,6 +324,12 @@ OIDC is commonly used by:
 OIDC flow:
 
 ```text
+User enters workspace
+        |
+        v
+HRMS shows configured SSO providers
+        |
+        v
 HRMS sends user to provider
         |
         v
@@ -321,8 +348,31 @@ HRMS verifies token signature and user email
 HRMS creates session
 ```
 
-We should build OIDC before SAML because it is easier and cleaner for modern
-apps.
+In this portal, generic OIDC is implemented for existing users. The tenant
+stores an issuer URL, client ID, encrypted client secret and allowed email
+domains. During callback, HRMS verifies the provider's ID token before it creates
+its own short-lived SSO exchange code and normal HRMS session.
+
+Just-in-time (JIT) provisioning can create a missing user on first SSO sign-in,
+but only when the provider is limited to the company's own email domains —
+otherwise any account at a shared issuer such as Google could join the workspace.
+
+IdP groups can also set the HRMS role through the provider's role mapping
+(`HR Team = HR_ADMIN`). The mapping is applied at every sign-in. It can never
+grant `ADMIN`, and existing admins are never changed by it.
+
+The built-in "Sign in with Google" button uses this same OIDC code path (Google
+is a standard OIDC issuer), so Google sign-ins get the same signature, nonce and
+email-verification checks.
+
+Two extra protections apply to every SSO flow:
+
+- **Browser binding.** Starting SSO sets a random `httpOnly` nonce cookie whose
+  hash is inside the signed `state`. The callback only succeeds in the browser
+  that started the flow, which blocks "login CSRF" (an attacker tricking you into
+  signing in as them).
+- **One-time exchange code.** After SSO the browser receives a 60-second code,
+  never tokens in the URL. Each code's ID is recorded, so it works exactly once.
 
 ## 12. SAML
 
@@ -337,10 +387,22 @@ Plain English:
 
 SAML is common in enterprise HR software, but it is more complex than OIDC.
 
-Recommended order:
+In this portal, SAML is implemented for tenant-configured identity providers.
+HRMS exposes metadata, receives the ACS callback, validates the signed SAML
+response/assertion, extracts the user's email, then creates the normal HRMS
+session. Like OIDC, JIT provisioning only happens when the provider explicitly
+allows it.
 
-1. Build OIDC first.
-2. Add SAML later when needed by enterprise customers.
+The SAML library checks the signature, issuer, audience and expiry. HRMS adds the
+checks the library leaves to the application:
+
+- the response's `Destination` and the assertion's `Recipient` must be this
+  HRMS callback URL, so an assertion issued for another application cannot be
+  replayed here;
+- each assertion ID is recorded and accepted only once (replay protection that
+  works across several API servers);
+- which SAML attributes hold email, name and groups is configurable per
+  provider (attribute mapping), with sensible defaults for Okta and Entra.
 
 ## 13. SCIM
 
@@ -376,6 +438,14 @@ SCIM disables user in HRMS
 
 SCIM is very useful, but it should come after the core auth system is stable.
 
+In this portal, SCIM is now implemented for basic user provisioning:
+
+- admin rotates a SCIM bearer token in identity-provider settings;
+- Okta/Entra calls `/scim/v2/Users`;
+- HRMS creates or updates both the `User` and `Employee` records;
+- deactivation disables the login and revokes sessions;
+- SCIM-created users do not receive a password by default.
+
 ## 14. Sessions
 
 A session represents a logged-in device/browser.
@@ -386,9 +456,7 @@ Examples:
 - Safari on phone
 - Firefox on office desktop
 
-Current app design has one active refresh token per user.
-
-Enterprise design should support multiple sessions:
+Enterprise design supports multiple sessions:
 
 ```text
 User
@@ -397,13 +465,87 @@ User
   - tablet session
 ```
 
-Then users and admins can revoke sessions:
+This portal now stores refresh tokens in a `UserSession` table. Each browser or
+device gets its own row, and only a hash of the refresh token is stored.
+
+Then users can revoke sessions:
 
 ```text
 Revoke this device
-Revoke all devices
-Admin force logout
+Revoke another device
+Revoke all other devices
 ```
+
+If a rotated refresh token is reused, the system treats that as suspicious and
+revokes that session.
+
+Revoking a session works almost instantly, not after the access token's 15
+minutes. Every access token carries its session id, and the API checks that the
+session is still active (cached for 30 seconds per server, cleared immediately on
+the server that did the revocation). Logout, "revoke device", admin force-logout,
+password change, offboarding and SCIM deactivation all use this.
+
+## 14.1 Recovery codes
+
+Authenticator apps are strong, but people lose phones. Production MFA needs a
+recovery path that is safer than asking support to disable MFA casually.
+
+When MFA is enabled, this portal generates one-time recovery codes:
+
+```text
+AB12C-DE34F
+...
+```
+
+The user must save them. The server stores only bcrypt hashes, not the original
+codes. When a recovery code is used during login, it is marked consumed and
+cannot be used again — the "mark consumed" step is a conditional update, so two
+simultaneous requests cannot both use the same code.
+
+Wrong MFA codes count towards the same account lockout as wrong passwords
+(5 failures → 15 minutes), and typing the correct password again does not reset
+the counter. Without that, someone who knows the password could keep guessing
+6-digit codes.
+
+## 14.2 Tenant auth policy
+
+Each workspace can configure security policy:
+
+- allow or disable password login
+- allow or disable Google login
+- require MFA for admins
+- require MFA for everyone
+- increase minimum password length
+- prevent reuse of recent passwords
+- expire passwords after a configured number of days
+- end inactive sessions with an idle timeout
+- shorten the maximum refresh-session lifetime
+
+The system refuses to enable MFA-required policies until the affected users have
+already enrolled, so admins do not accidentally lock out the company.
+
+People who join later (invited, created by SCIM, or provisioned by SSO) are not
+locked out either: after a correct password or SSO sign-in they receive a
+short-lived *enrolment-only* token, scan a QR code, confirm a code, receive their
+recovery codes and are then signed in. While a policy requires MFA, users cannot
+turn it off themselves.
+
+## 14.3 Step-up authentication
+
+Some actions are too dangerous to allow on a stolen access token alone. For
+these, HRMS asks the user to prove it is really them again ("step-up"):
+
+- changing someone's role
+- changing salaries and finalising payroll
+- changing the authentication policy
+- adding or changing SSO/SCIM identity providers or rotating the SCIM token
+- resetting another user's MFA
+- erasing an employee's personal data
+
+The user enters an authenticator or recovery code (or their password if they do
+not use MFA). The API returns a 5-minute step-up token bound to that user and
+that session; the web app sends it as `x-step-up-token` and retries the action.
+A step-up token from a different session is rejected.
 
 ## 15. RBAC and permissions
 
@@ -411,12 +553,19 @@ RBAC means role-based access control.
 
 Example roles:
 
+- SUPER_ADMIN
 - ADMIN
+- HR_ADMIN
 - HR_MANAGER
 - PAYROLL_ADMIN
 - RECRUITER
+- HIRING_MANAGER
+- INTERVIEWER
 - MANAGER
 - EMPLOYEE
+- AUDITOR
+- FINANCE
+- IT_ADMIN
 
 Permissions are more specific.
 
@@ -424,10 +573,10 @@ Example:
 
 ```text
 payroll.finalize
-employees.read
-employees.update
-hiring.manage
-documents.read_private
+employees.read_full
+employees.manage
+hiring.pipeline.manage
+documents.manage
 audit.read
 ```
 
@@ -445,6 +594,11 @@ User can finalize payroll if they have payroll.finalize
 
 This gives more control and prepares us for custom roles later.
 
+In this portal, the backend permission map lives in
+`apps/server/src/common/auth/permissions.ts`, and the frontend uses a matching
+map in `apps/web/src/lib/auth.ts` so menus and buttons follow the same model as
+the API.
+
 ## 16. Tenant auth policies
 
 Each company should be able to define security rules.
@@ -460,6 +614,7 @@ Examples:
 - Maximum session lifetime
 - Password minimum length
 - Password history count
+- Password expiry days
 
 This is how HRMS becomes enterprise-ready.
 
@@ -483,7 +638,11 @@ Examples:
 - SSO login completed
 - Suspicious login detected
 
-These events are useful for admins and for future alerts.
+In this portal they are written to the audit log and shown under
+**Audit Logs → Security events**, with the risky ones (lockouts, refresh-token
+reuse, SSO failures, failed MFA/step-up) highlighted. Lockouts and token reuse
+also notify the user and the workspace admins. The review procedure is in
+`docs/modules/auth-runbooks.md`.
 
 ## 18. Recommended architecture for our HRMS
 

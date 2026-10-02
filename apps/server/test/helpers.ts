@@ -54,7 +54,16 @@ export class TestClient {
     const res = await this.request('POST', '/auth/signup', { body: { tenantName: company, name: 'Ada Admin', email, password: PASSWORD } });
     if (res.status !== 201) throw new Error(`signup failed: ${res.status} ${JSON.stringify(res.body)}`);
     const d = res.body.data;
-    return { token: d.accessToken as string, refreshToken: d.refreshToken as string, user: d.user, tenant: d.tenant, email };
+    const refreshToken = cookieValue(res, 'hrms_refresh');
+    if (!refreshToken) throw new Error('signup did not set the refresh cookie');
+    return { token: d.accessToken as string, refreshToken, user: d.user, tenant: d.tenant, email };
+  }
+
+  /** Re-authenticates (password; the user has no MFA) and returns the header for @RequireStepUp routes. */
+  async stepUp(token: string, credentials: { password?: string; code?: string } = { password: PASSWORD }) {
+    const res = await this.request('POST', '/auth/step-up', { token, body: credentials });
+    if (res.status !== 200) throw new Error(`step-up failed: ${res.status} ${JSON.stringify(res.body)}`);
+    return { 'x-step-up-token': res.body.data.stepUpToken as string };
   }
 
   close() {
@@ -63,6 +72,18 @@ export class TestClient {
 }
 
 export const PASSWORD = 'Str0ng-Passw0rd!';
+
+/** Value of a cookie set by the response, or undefined. */
+export function cookieValue(res: TestResponse, name: string): string | undefined {
+  const header = res.headers['set-cookie'];
+  const cookies: string[] = Array.isArray(header) ? header : header ? [String(header)] : [];
+  for (const cookie of cookies) {
+    const [pair] = cookie.split(';');
+    const index = pair.indexOf('=');
+    if (pair.slice(0, index).trim() === name) return decodeURIComponent(pair.slice(index + 1));
+  }
+  return undefined;
+}
 const rnd = () => Math.floor(Math.random() * 250) + 1;
 export const unique = () => randomBytes(4).toString('hex');
 

@@ -13,9 +13,12 @@
 
 | Module | Summary |
 | --- | --- |
-| [Auth](modules/auth.md) | Sign-up, login, sessions, invites, reset, 2FA, Google SSO |
+| [Auth](modules/auth.md) | Sign-up, login, sessions, MFA, step-up, policies, Google/OIDC/SAML SSO, SCIM |
 | [Authentication tutorial](modules/authentication-tutorial.md) | Plain-language guide to passwords, sessions, MFA, SSO, OIDC, SAML and SCIM |
-| [Authentication hardening plan](modules/authentication-hardening-plan.md) | Checkbox implementation plan for production-grade auth |
+| [Enterprise auth setup guides](modules/auth-setup-guides.md) | Okta, Entra, Google Workspace, SAML, SCIM, role and attribute mapping |
+| [Auth admin runbooks](modules/auth-runbooks.md) | Resetting a user's MFA; reviewing suspicious sign-in activity |
+| [Authentication hardening plan](modules/authentication-hardening-plan.md) | Checkbox plan with verified status and what is left |
+| [Roles and permissions](modules/roles-and-permissions.md) | Built-in roles, permission groups and implementation rules |
 | [Tenants](modules/tenants.md) | Workspace settings, IP allow-list, Slack, sample data |
 | [Employees](modules/employees.md) | Directory, reporting lines, offboarding, roles |
 | [Leave](modules/leave.md) | Policies, holidays, requests, balances, approvals |

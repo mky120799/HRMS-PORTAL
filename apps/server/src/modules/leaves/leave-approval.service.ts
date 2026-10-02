@@ -8,6 +8,8 @@ import { AuditService } from '../../common/audit/audit.service';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { EmailTemplates } from '../../common/email/templates';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { can } from '../../common/auth/permissions';
+import type { TenantRole } from '../../common/constants/domain';
 import { parseDateOnly } from '../../common/utils/dates';
 import { NotificationPublisherService } from '../notifications/notification-publisher.service';
 import type {
@@ -18,7 +20,7 @@ import type {
 export type ApprovalRuleSnapshot = {
   step: number;
   approverKind: 'DIRECT_MANAGER' | 'ROLE' | 'SPECIFIC_USER';
-  approverRole?: 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+  approverRole?: TenantRole;
   approverUserId?: string;
   reminderAfterHours: number;
   escalationAfterHours?: number;
@@ -214,7 +216,7 @@ export class LeaveApprovalService {
     managerUserId: string | null,
     rule: ApprovalRuleSnapshot,
   ): Promise<boolean> {
-    if (user.role === 'ADMIN') return true;
+    if (can(user, 'leave.admin')) return true;
     if (rule.approverKind === 'DIRECT_MANAGER') {
       if (!!user.employeeId && user.employeeId === managerId) return true;
       return (

@@ -34,7 +34,7 @@ jobs:
       - name: Dependency audit (production, critical)
         run: npm audit --omit=dev --audit-level=critical
 
-  # ── API integration tests against real PostgreSQL + RabbitMQ ──────────────
+  # ── API integration tests against real PostgreSQL + RabbitMQ + Redis ───────
   api-e2e:
     runs-on: ubuntu-latest
     services:
@@ -47,8 +47,13 @@ jobs:
         image: rabbitmq:4-alpine
         ports: ["5672:5672"]
         options: --health-cmd "rabbitmq-diagnostics -q ping" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
     env:
       NODE_ENV: test
+      REDIS_URL: redis://localhost:6379
       DATABASE_URL: postgresql://hrms:hrms@localhost:5432/hrms_test
       RABBITMQ_URL: amqp://guest:guest@localhost:5672
       JWT_SECRET: ci-secret-at-least-32-characters-long-000
@@ -63,6 +68,10 @@ jobs:
       - name: Migrate (also proves migrations apply cleanly from scratch)
         run: npx prisma migrate deploy && npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
         working-directory: apps/server
+      - name: Shared rate-limit store against real Redis
+        run: npx jest src/common/rate-limit
+        working-directory: apps/server
+        env: { REDIS_TEST_URL: redis://localhost:6379 }
       - run: npm run test:e2e:api
 
   # ── Browser smoke test of the full stack ──────────────────────────────────

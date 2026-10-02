@@ -7,6 +7,7 @@ import type { AuthUser } from '../../common/auth/auth-user';
 import { EmailTemplates } from '../../common/email/templates';
 import { countWorkingDays, daysInMonth, monthRange, overlap, toDateOnly } from '../../common/utils/dates';
 import { NotificationPublisherService } from '../notifications/notification-publisher.service';
+import { can } from '../../common/auth/permissions';
 import { calculatePayslip } from './payroll.calculator';
 import { renderPayslipPdf } from './payslip-pdf';
 import type { UpsertSalaryDto } from './dto/payroll.dto';
@@ -242,7 +243,7 @@ export class PayrollService {
     });
     if (!p) throw new NotFoundException('Payslip not found');
     const own = p.employeeId === user.employeeId;
-    if (!(user.role === 'ADMIN' || (own && p.status === 'FINALIZED'))) throw new ForbiddenException('You cannot access this payslip');
+    if (!(can(user, 'payroll.read') || (own && p.status === 'FINALIZED'))) throw new ForbiddenException('You cannot access this payslip');
 
     const pdf = await renderPayslipPdf({
       companyName: p.tenant.name,

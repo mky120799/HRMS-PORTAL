@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isoDate, paginationSchema } from '../../../common/validation/common.schemas';
-import { LEAVE_STATUSES } from '../../../common/constants/domain';
+import { LEAVE_STATUSES, TENANT_ROLES } from '../../../common/constants/domain';
 
 const leaveType = z.string().trim().toUpperCase().regex(/^[A-Z_]{2,30}$/, 'Invalid leave type');
 
@@ -64,7 +64,7 @@ export type AdjustLeaveBalanceDto = z.infer<typeof adjustLeaveBalanceSchema>;
 const approvalRule = z.object({
   step: z.number().int().min(1).max(10),
   approverKind: z.enum(['DIRECT_MANAGER', 'ROLE', 'SPECIFIC_USER']),
-  approverRole: z.enum(['ADMIN', 'MANAGER', 'EMPLOYEE']).optional(),
+  approverRole: z.enum(TENANT_ROLES).optional(),
   approverUserId: z.string().uuid().optional(),
   reminderAfterHours: z.number().int().min(1).max(24 * 30).default(24),
   escalationAfterHours: z.number().int().min(1).max(24 * 90).optional(),

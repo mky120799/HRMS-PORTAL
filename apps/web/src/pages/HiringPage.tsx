@@ -10,7 +10,7 @@ import {
 import { api, downloadFile, type Paged } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
-import { getAuth } from '../lib/auth';
+import { getAuth, hasPermission } from '../lib/auth';
 import { fmtDate } from '../lib/format';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -102,7 +102,9 @@ export function HiringPage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const auth = getAuth();
-  const isAdmin = auth?.user.role === 'ADMIN';
+  const canManageJobs = hasPermission(['hiring.jobs.manage']);
+  const canManagePipeline = hasPermission(['hiring.pipeline.manage']);
+  const canSubmitFeedback = hasPermission(['hiring.feedback.submit']);
   const [jobId, setJobId] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [scheduling, setScheduling] = useState<Application | null>(null);
@@ -195,7 +197,7 @@ export function HiringPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {isAdmin && (
+        {canManageJobs && (
           <Card className="bg-white/50 backdrop-blur-xl h-fit">
             <CardHeader><CardTitle>Post a job</CardTitle></CardHeader>
             <CardContent>
@@ -228,7 +230,7 @@ export function HiringPage() {
           </Card>
         )}
 
-        <Card className={`${isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white/50 backdrop-blur-xl`}>
+        <Card className={`${canManageJobs ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white/50 backdrop-blur-xl`}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Briefcase size={18} /> Jobs</CardTitle>
           </CardHeader>
@@ -243,7 +245,7 @@ export function HiringPage() {
                 </button>
                 <div className="flex justify-between items-center mt-2">
                   <Badge variant="outline" className={j.status === 'OPEN' ? 'text-emerald-600' : 'text-slate-500'}>{j.status}</Badge>
-                  {isAdmin && (
+                  {canManageJobs && (
                     <Button size="sm" variant="ghost" onClick={() => toggleJob.mutate(j)}>
                       {j.status === 'OPEN' ? 'Close' : 'Reopen'}
                     </Button>
@@ -307,7 +309,7 @@ export function HiringPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {isAdmin ? (
+                    {canManagePipeline ? (
                       <select
                         className={`h-8 rounded-md border px-2 text-xs ${statusColor[a.status] ?? ''}`}
                         value={a.status}
@@ -329,7 +331,7 @@ export function HiringPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => { setScheduling(a); setInterview({ startsAt: '', durationMinutes: 45, location: '' }); }}
-                      disabled={['HIRED', 'REJECTED'].includes(a.status)}
+                      disabled={!canManagePipeline || ['HIRED', 'REJECTED'].includes(a.status)}
                       title={a.interviewAt ? 'Reschedule interview' : 'Schedule interview'}
                     >
                       {a.interviewAt ? <RefreshCw size={14} className="mr-1" /> : <CalendarPlus size={14} className="mr-1" />}
@@ -339,6 +341,7 @@ export function HiringPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => { setFeedbackApp(a); resetFeedback(); }}
+                      disabled={!canSubmitFeedback}
                       title="Interview feedback"
                     >
                       <MessageSquare size={14} />

@@ -2,7 +2,7 @@ import { Controller, Get, NotFoundException, Post, Query } from '@nestjs/common'
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { AttendanceService } from './attendance.service';
-import { CurrentTenant, CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentTenant, CurrentUser, Permissions } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import type { TenantSnapshot } from '../../common/tenant/tenant-context.service';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -34,7 +34,7 @@ export class AttendanceController {
   }
 
   @Get('roster')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('attendance.roster.read')
   roster(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantSnapshot, @Query(new ZodValidationPipe(dayQuery)) q: z.infer<typeof dayQuery>) {
     return this.attendance.roster(user, tenant, q.date);
   }

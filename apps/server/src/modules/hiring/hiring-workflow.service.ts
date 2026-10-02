@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import type { AuthUser } from '../../common/auth/auth-user';
 import type { ApplicationStatus } from '../../common/constants/domain';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { can } from '../../common/auth/permissions';
 import { EmailTemplates } from '../../common/email/templates';
 import type {
   CreateHiringStageDto,
@@ -307,9 +308,9 @@ export class HiringWorkflowService {
           (target.position < currentStage.position ||
             (['HIRED', 'REJECTED'].includes(currentCategory) &&
               target.category !== currentCategory));
-        if (isBackward && user.role !== 'ADMIN')
+        if (isBackward && !can(user, 'hiring.offers.manage'))
           throw new ConflictException(
-            'Only admins can move an application backward',
+            'Only hiring admins can move an application backward',
           );
         if (isBackward && !note?.trim())
           throw new ConflictException(
@@ -317,11 +318,11 @@ export class HiringWorkflowService {
           );
         if (
           !isBackward &&
-          user.role !== 'ADMIN' &&
+          !can(user, 'hiring.offers.manage') &&
           ['OFFERED', 'HIRED'].includes(target.category)
         ) {
           throw new ConflictException(
-            'Only admins can offer a role or mark a candidate as hired',
+            'Only hiring admins can offer a role or mark a candidate as hired',
           );
         }
         if (

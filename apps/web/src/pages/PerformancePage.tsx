@@ -4,7 +4,7 @@ import { Target, Star, Users, Plus } from 'lucide-react';
 import { api } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
-import { getAuth } from '../lib/auth';
+import { hasPermission } from '../lib/auth';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -56,14 +56,15 @@ const statusLabel = { DRAFT: 'Awaiting self-review', SELF_SUBMITTED: 'Awaiting m
 export function PerformancePage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
-  const role = getAuth()?.user.role;
+  const canViewTeamReviews = hasPermission(['performance.team.read']);
+  const canManagePerformance = hasPermission(['performance.manage']);
   const [cycleName, setCycleName] = useState('');
   const onError = (e: unknown) => showToast(getErrorMessage(e), 'error');
   const refresh = () => qc.invalidateQueries({ queryKey: ['performance'] });
 
   const mine = useQuery({ queryKey: ['performance', 'me'], queryFn: async () => (await api.get<Review[]>('/performance/me')).data, retry: false });
-  const team = useQuery({ queryKey: ['performance', 'team'], enabled: role === 'ADMIN' || role === 'MANAGER', queryFn: async () => (await api.get<Review[]>('/performance/team')).data });
-  const cycles = useQuery({ queryKey: ['performance', 'cycles'], enabled: role === 'ADMIN', queryFn: async () => (await api.get<Cycle[]>('/performance/cycles')).data });
+  const team = useQuery({ queryKey: ['performance', 'team'], enabled: canViewTeamReviews, queryFn: async () => (await api.get<Review[]>('/performance/team')).data });
+  const cycles = useQuery({ queryKey: ['performance', 'cycles'], enabled: canManagePerformance, queryFn: async () => (await api.get<Cycle[]>('/performance/cycles')).data });
 
   const self = useMutation({
     mutationFn: async (v: { id: string; rating: number; comments: string }) => api.patch(`/performance/${v.id}/self`, { selfRating: v.rating, comments: v.comments }),
@@ -102,7 +103,7 @@ export function PerformancePage() {
         <p className="text-muted-foreground mt-2">Self-review first, then your manager completes the review.</p>
       </div>
 
-      {role === 'ADMIN' && (
+      {canManagePerformance && (
         <Card className="bg-white/50 backdrop-blur-xl">
           <CardHeader>
             <CardTitle>Review cycles</CardTitle>
@@ -156,7 +157,7 @@ export function PerformancePage() {
           </CardContent>
         </Card>
 
-        {(role === 'ADMIN' || role === 'MANAGER') && (
+        {canViewTeamReviews && (
           <Card className="bg-white/50 backdrop-blur-xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

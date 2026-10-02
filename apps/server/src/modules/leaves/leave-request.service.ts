@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { AuditService } from '../../common/audit/audit.service';
 import type { AuthUser } from '../../common/auth/auth-user';
+import { can } from '../../common/auth/permissions';
 import { EmailTemplates } from '../../common/email/templates';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { parseDateOnly, toDateOnly } from '../../common/utils/dates';
@@ -53,7 +54,7 @@ export class LeaveRequestService {
     if (
       dto.employeeId &&
       dto.employeeId !== user.employeeId &&
-      user.role !== 'ADMIN'
+      !can(user, 'leave.admin')
     )
       throw new ForbiddenException(
         'Only admins can request leave on behalf of someone else',
@@ -443,9 +444,9 @@ export class LeaveRequestService {
     const cancellable =
       leave.status === 'PENDING' ||
       (leave.status === 'APPROVED' &&
-        user.role === 'ADMIN' &&
+        can(user, 'leave.admin') &&
         leave.startDate > new Date());
-    if ((!own && user.role !== 'ADMIN') || !cancellable)
+    if ((!own && !can(user, 'leave.admin')) || !cancellable)
       throw new ForbiddenException('This request can no longer be cancelled');
     return this.transactions.serializable(async (tx) => {
       const result = await tx.leaveRequest.updateMany({

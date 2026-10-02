@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGua
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { EmployeesService } from './employees.service';
 import { EmployeeLimitGuard } from '../../common/guards/employee-limit.guard';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions, RequireStepUp } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
@@ -12,6 +12,7 @@ import {
   offboardSchema,
   updateEmployeeSchema,
   type CreateEmployeeDto,
+  type ChangeRoleDto,
   type ListEmployeesQuery,
   type UpdateEmployeeDto,
 } from './dto/create-employee.dto';
@@ -39,27 +40,28 @@ export class EmployeesController {
   }
 
   @Post()
-  @Roles('ADMIN')
+  @Permissions('employees.manage')
   @UseGuards(EmployeeLimitGuard)
   create(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(createEmployeeSchema)) dto: CreateEmployeeDto) {
     return this.employees.create(user, dto);
   }
 
   @Patch(':id')
-  @Roles('ADMIN')
+  @Permissions('employees.manage')
   update(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(updateEmployeeSchema)) dto: UpdateEmployeeDto) {
     return this.employees.update(user, id, dto);
   }
 
   @Post(':id/offboard')
-  @Roles('ADMIN')
+  @Permissions('employees.offboard')
   offboard(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(offboardSchema)) dto: { exitDate: string }) {
     return this.employees.offboard(user, id, dto.exitDate);
   }
 
   @Patch(':id/role')
-  @Roles('ADMIN')
-  changeRole(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(changeRoleSchema)) dto: { role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE' }) {
-    return this.employees.changeRole(user, id, dto.role);
+  @RequireStepUp()
+  @Permissions('employees.roles.manage')
+  changeRole(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(changeRoleSchema)) dto: ChangeRoleDto) {
+    return this.employees.changeRole(user, id, dto.role ? { role: dto.role } : { customRoleId: dto.customRoleId! });
   }
 }

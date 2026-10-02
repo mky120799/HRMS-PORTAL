@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuthUser } from '../../common/auth/auth-user';
+import { can } from '../../common/auth/permissions';
 
 const PEOPLE = { select: { id: true, firstName: true, lastName: true, department: true, designation: true } } as const;
 
@@ -81,7 +82,7 @@ export class PerformanceService {
     if (!review) throw new NotFoundException('Review not found');
     if (review.employeeId === user.employeeId) throw new ForbiddenException('You cannot review yourself');
     const isReviewer = !!user.employeeId && review.reviewerId === user.employeeId;
-    if (!isReviewer && user.role !== 'ADMIN') throw new ForbiddenException('Only the assigned reviewer or an admin can complete this review');
+    if (!isReviewer && !can(user, 'performance.manage')) throw new ForbiddenException('Only the assigned reviewer or a performance admin can complete this review');
     if (review.status !== 'SELF_SUBMITTED') throw new ConflictException('The employee must submit their self-review first');
     return this.prisma.performanceReview.update({
       where: { id },

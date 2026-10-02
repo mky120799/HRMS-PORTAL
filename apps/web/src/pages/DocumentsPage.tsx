@@ -4,7 +4,7 @@ import { File, Upload, Trash2, Download, AlertTriangle } from 'lucide-react';
 import { api, downloadFile } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../lib/toast';
-import { getAuth } from '../lib/auth';
+import { hasPermission } from '../lib/auth';
 import { fmtDate, fmtDay } from '../lib/format';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -66,11 +66,11 @@ function DocRow({ d, onDelete, showOwner }: { d: Doc; onDelete?: () => void; sho
 export function DocumentsPage() {
   const qc = useQueryClient();
   const { showToast } = useToast();
-  const isAdmin = getAuth()?.user.role === 'ADMIN';
+  const canManageDocuments = hasPermission(['documents.manage']);
   const { register, handleSubmit, reset } = useForm<UploadForm>({ defaultValues: { type: 'OTHER' } });
 
   const mine = useQuery({ queryKey: ['documents', 'me'], queryFn: async () => (await api.get<Doc[]>('/documents/me')).data, retry: false });
-  const expiring = useQuery({ queryKey: ['documents', 'expiring'], enabled: isAdmin, queryFn: async () => (await api.get<Doc[]>('/documents/expiring', { params: { days: 45 } })).data });
+  const expiring = useQuery({ queryKey: ['documents', 'expiring'], enabled: canManageDocuments, queryFn: async () => (await api.get<Doc[]>('/documents/expiring', { params: { days: 45 } })).data });
   const onError = (e: unknown) => showToast(getErrorMessage(e), 'error');
 
   const upload = useMutation({
@@ -161,7 +161,7 @@ export function DocumentsPage() {
         </Card>
       </div>
 
-      {isAdmin && (
+      {canManageDocuments && (
         <Card className="bg-white/50 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

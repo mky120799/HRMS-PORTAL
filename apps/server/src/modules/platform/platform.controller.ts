@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantContextService } from '../../common/tenant/tenant-context.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { paginate, paged, paginationSchema } from '../../common/validation/common.schemas';
@@ -19,7 +19,7 @@ const statusSchema = z.object({ isActive: z.boolean() });
 @ApiTags('Platform')
 @ApiBearerAuth()
 @Controller('platform')
-@Roles('SUPER_ADMIN')
+@Permissions('platform.manage')
 export class PlatformController {
   constructor(
     private readonly prisma: PrismaService,

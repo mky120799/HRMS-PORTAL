@@ -144,7 +144,7 @@ describe('HiringWorkflowService', () => {
         stageId: target.id,
         note: 'Retry',
       }),
-    ).rejects.toThrow('Only admins');
+    ).rejects.toThrow('Only hiring admins');
     expect(tx.application.updateMany).not.toHaveBeenCalled();
   });
 
@@ -166,7 +166,7 @@ describe('HiringWorkflowService', () => {
       const { service } = serviceFor({ current, target });
       await expect(
         service.move(manager as any, 'application-1', { stageId: target.id }),
-      ).rejects.toThrow('Only admins');
+      ).rejects.toThrow('Only hiring admins');
     },
   );
 

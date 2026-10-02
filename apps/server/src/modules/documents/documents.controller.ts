@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { DocumentsService } from './documents.service';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { RequiresPlan } from '../../common/decorators/plan.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -24,13 +24,13 @@ export class DocumentsController {
   }
 
   @Get()
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('documents.team.read')
   list(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(listQuery)) q: z.infer<typeof listQuery>) {
     return this.documents.list(user, q.employeeId);
   }
 
   @Get('expiring')
-  @Roles('ADMIN')
+  @Permissions('documents.manage')
   expiring(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(expiringQuery)) q: z.infer<typeof expiringQuery>) {
     return this.documents.expiring(user.tenantId, q.days);
   }

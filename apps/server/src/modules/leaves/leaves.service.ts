@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { AuditService } from '../../common/audit/audit.service';
 import type { AuthUser } from '../../common/auth/auth-user';
+import { can } from '../../common/auth/permissions';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { paginate, paged } from '../../common/validation/common.schemas';
 import { todayIn } from '../../common/utils/dates';
@@ -36,10 +37,10 @@ export class LeavesService {
   async list(user: AuthUser, query: ListLeavesQuery) {
     let scope: Prisma.LeaveRequestWhereInput;
     if (query.scope === 'all') {
-      if (user.role !== 'ADMIN') throw new ForbiddenException('Only admins can view all leave requests');
+      if (!can(user, 'leave.admin')) throw new ForbiddenException('Only leave admins can view all leave requests');
       scope = {};
     } else if (query.scope === 'team') {
-      if (!user.employeeId || (user.role !== 'MANAGER' && user.role !== 'ADMIN')) throw new ForbiddenException('Only managers can view team leave');
+      if (!user.employeeId || !can(user, 'leave.review')) throw new ForbiddenException('Only leave reviewers can view team leave');
       scope = { employee: { managerId: user.employeeId } };
     } else {
       if (!user.employeeId) return paged([], 0, query);
@@ -139,7 +140,7 @@ export class LeavesService {
   }
 
   private async assertCanActFor(user: AuthUser, employeeId: string) {
-    if (employeeId === user.employeeId || user.role === 'ADMIN') return;
+    if (employeeId === user.employeeId || can(user, 'leave.admin')) return;
     const isReport = user.employeeId ? await this.prisma.employee.count({ where: { id: employeeId, tenantId: user.tenantId, managerId: user.employeeId } }) : 0;
     if (!isReport) throw new ForbiddenException('You can only view your own or your team’s balances');
   }

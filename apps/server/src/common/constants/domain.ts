@@ -2,10 +2,38 @@
  * Domain vocabularies. Status and role columns are stored as strings in the
  * database; these tuples are the only values the API accepts or writes.
  */
-export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'EMPLOYEE'] as const;
+export const ROLES = [
+  'SUPER_ADMIN',
+  'ADMIN',
+  'HR_ADMIN',
+  'HR_MANAGER',
+  'PAYROLL_ADMIN',
+  'RECRUITER',
+  'HIRING_MANAGER',
+  'INTERVIEWER',
+  'MANAGER',
+  'EMPLOYEE',
+  'AUDITOR',
+  'FINANCE',
+  'IT_ADMIN',
+] as const;
 export type Role = (typeof ROLES)[number];
 /** Roles a tenant admin may assign. SUPER_ADMIN is platform-only. */
-export const TENANT_ROLES = ['ADMIN', 'MANAGER', 'EMPLOYEE'] as const;
+export const TENANT_ROLES = [
+  'ADMIN',
+  'HR_ADMIN',
+  'HR_MANAGER',
+  'PAYROLL_ADMIN',
+  'RECRUITER',
+  'HIRING_MANAGER',
+  'INTERVIEWER',
+  'MANAGER',
+  'EMPLOYEE',
+  'AUDITOR',
+  'FINANCE',
+  'IT_ADMIN',
+] as const;
+export type TenantRole = (typeof TENANT_ROLES)[number];
 
 export const EMPLOYEE_STATUSES = ['ACTIVE', 'ON_NOTICE', 'EXITED'] as const;
 export const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'] as const;

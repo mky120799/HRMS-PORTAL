@@ -22,7 +22,7 @@ import { NotificationOperationsService } from './notification-operations.service
 import { NotificationEmailWebhookService } from './notification-email-webhook.service';
 import { NotificationRealtimeService } from './notification-realtime.service';
 import type { Observable } from 'rxjs';
-import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions, Public } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
@@ -106,13 +106,13 @@ export class NotificationsController {
   }
 
   @Get('campaigns')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   campaigns(@CurrentUser() user: AuthUser) {
     return this.notifications.listCampaigns(user);
   }
 
   @Get('campaigns/:id')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   campaign(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -121,7 +121,7 @@ export class NotificationsController {
   }
 
   @Post('campaigns')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   @Throttle({ default: { limit: 20, ttl: 60 * 60_000 } })
   createCampaign(
     @CurrentUser() user: AuthUser,
@@ -132,7 +132,7 @@ export class NotificationsController {
   }
 
   @Post('campaigns/:id/cancel')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   cancelCampaign(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -141,25 +141,25 @@ export class NotificationsController {
   }
 
   @Get('operations')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   operationsOverview(@CurrentUser() user: AuthUser) {
     return this.operations.overview(user.tenantId);
   }
 
   @Get('suppressions')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   suppressions(@CurrentUser() user: AuthUser) {
     return this.notifications.suppressions(user);
   }
 
   @Get('templates')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   templates(@CurrentUser() user: AuthUser) {
     return this.notifications.templates(user);
   }
 
   @Post('templates')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   createTemplate(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createNotificationTemplateSchema))
@@ -169,7 +169,7 @@ export class NotificationsController {
   }
 
   @Post('templates/:id/activate')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   activateTemplate(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -178,7 +178,7 @@ export class NotificationsController {
   }
 
   @Post('suppressions/:id/unsuppress')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   unsuppress(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -187,7 +187,7 @@ export class NotificationsController {
   }
 
   @Post('deliveries/:id/retry')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   retryDelivery(
     @CurrentUser() user: AuthUser,
@@ -221,7 +221,7 @@ export class NotificationsController {
   }
 
   @Post('compose-email')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   compose(
     @CurrentUser() user: AuthUser,
@@ -231,7 +231,7 @@ export class NotificationsController {
   }
 
   @Post('announce')
-  @Roles('ADMIN')
+  @Permissions('notifications.manage')
   @Throttle({ default: { limit: 5, ttl: 60 * 60_000 } })
   announce(
     @CurrentUser() user: AuthUser,

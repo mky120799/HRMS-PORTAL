@@ -45,11 +45,10 @@ ECR scan-on-push, immutable image tags, minimal runtime images running as non-ro
 
 | Risk | Why accepted now | Plan |
 | --- | --- | --- |
-| Access tokens stay valid ≤ 15 min after revocation | Stateless verification keeps every request DB-free | Redis deny-list keyed by `jti` if needed |
-| Tokens in `localStorage` | Simple SPA/API split; CSP blocks third-party script injection | Refresh token in httpOnly SameSite cookie |
-| Google SSO login CSRF | `state` is signed but not bound to the browser | Bind state to an httpOnly nonce cookie |
-| `sso_exchange` code reusable for 60 s | Very short TTL, single session rotation | Store `jti` in Redis for strict one-time use |
-| Throttler counters are per instance | Behind WAF IP rate limit | Redis-backed throttler storage |
+| A revoked session's access token works ≤ 30 s on *other* API instances | Per-instance 30 s cache of the session check avoids a DB hit per request; the revoking instance applies it at once | Shared cache/pub-sub if instant cross-instance revocation is required |
+| Access token (15 min) readable by page script | Refresh token is httpOnly/SameSite=Strict, so XSS cannot obtain a long-lived credential; strict CSP | — |
+| Throttler counters are per instance | Behind WAF IP rate limit | Redis-backed throttler storage (needs Redis infrastructure) |
+| TOTP code can be reused within its 30 s window | Requires the password too; lockout and rate limits apply | Record the last accepted time-step per user |
 | No database Row-Level Security | App-layer scoping + tests | Add Postgres RLS as defence in depth |
 | Prisma CLI transitive advisory (`deepmerge-ts`) | CLI-only, parses trusted local config | Upgrade when Prisma releases a patched version |
 

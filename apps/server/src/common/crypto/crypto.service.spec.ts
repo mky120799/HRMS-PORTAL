@@ -21,16 +21,19 @@ describe('CryptoService', () => {
 });
 
 describe('legacy 2FA secrets', () => {
-  it('verifies codes against both plaintext (legacy) and encrypted secrets', () => {
+  it('verifies codes against both plaintext (legacy) and encrypted secrets', async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { OTP } = require('otplib');
     const { TwoFactorAuthService } = require('../../modules/auth/two-factor.service');
     const otp = new OTP({ strategy: 'totp' });
     const secret = otp.generateSecret();
     const code = otp.generateSync({ secret });
-    const svc = new TwoFactorAuthService({} as any, crypto);
-    expect(svc.verifyCode(code, secret)).toBe(true);
-    expect(svc.verifyCode(code, crypto.encrypt(secret))).toBe(true);
-    expect(svc.verifyCode('000000', crypto.encrypt(secret))).toBe(otp.verifySync({ token: '000000', secret }).valid);
+    // The step-consumption update always succeeds here; replay protection is tested in two-factor.service.spec.
+    const svc = new TwoFactorAuthService({ user: { updateMany: async () => ({ count: 1 }) } } as any, crypto);
+    await expect(svc.consumeCode({ id: 'u1', twoFactorSecret: secret }, code)).resolves.toBe(true);
+    await expect(svc.consumeCode({ id: 'u1', twoFactorSecret: crypto.encrypt(secret) }, code)).resolves.toBe(true);
+    await expect(svc.consumeCode({ id: 'u1', twoFactorSecret: crypto.encrypt(secret) }, '000000')).resolves.toBe(
+      otp.verifySync({ token: '000000', secret }).valid,
+    );
   });
 });

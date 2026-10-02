@@ -5,7 +5,7 @@
  */
 import { TokenService } from '../src/common/auth/token.service';
 import { PrismaService } from '../src/common/prisma/prisma.service';
-import { FAKE_PDF, multipart, PASSWORD, TestClient, unique } from './helpers';
+import { cookieValue, FAKE_PDF, multipart, PASSWORD, TestClient, unique } from './helpers';
 
 describe('Security', () => {
   let t: TestClient;
@@ -145,12 +145,16 @@ describe('Security', () => {
   describe('sessions', () => {
     it('refresh tokens rotate, and replaying an old one revokes the session', async () => {
       const s = await t.signup();
-      const first = await t.request('POST', '/auth/refresh', { body: { refreshToken: s.refreshToken } });
+      const cookie = (value: string) => ({ cookie: `hrms_refresh=${encodeURIComponent(value)}` });
+      const first = await t.request('POST', '/auth/refresh', { headers: cookie(s.refreshToken), body: {} });
       expect(first.status).toBe(200);
-      const replay = await t.request('POST', '/auth/refresh', { body: { refreshToken: s.refreshToken } });
+      const rotated = cookieValue(first, 'hrms_refresh')!;
+      expect(rotated).toBeTruthy();
+      expect(rotated).not.toBe(s.refreshToken);
+      const replay = await t.request('POST', '/auth/refresh', { headers: cookie(s.refreshToken), body: {} });
       expect(replay.status).toBe(401);
       // The legitimate newer token is also revoked after reuse is detected.
-      const newer = await t.request('POST', '/auth/refresh', { body: { refreshToken: first.body.data.refreshToken } });
+      const newer = await t.request('POST', '/auth/refresh', { headers: cookie(rotated), body: {} });
       expect(newer.status).toBe(401);
     });
 

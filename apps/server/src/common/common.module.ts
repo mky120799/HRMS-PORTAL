@@ -2,6 +2,10 @@ import { Global, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TokenService } from './auth/token.service';
+import { ReplayGuardService } from './auth/replay-guard.service';
+import { SessionCacheService } from './auth/session-cache.service';
+import { RolePermissionsService } from './auth/role-permissions.service';
+import { RoleAssignmentService } from './auth/role-assignment.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { CryptoService } from './crypto/crypto.service';
 import { StorageService } from './storage/storage.service';
@@ -17,7 +21,7 @@ import { EmailProcessor } from './email/email.processor';
 @Global()
 @Module({
   imports: [PassportModule.register({ defaultStrategy: 'jwt' }), JwtModule.register({})],
-  providers: [TokenService, JwtStrategy, CryptoService, StorageService, TenantContextService, EmailService, EmailProcessor],
-  exports: [TokenService, CryptoService, StorageService, TenantContextService, EmailService],
+  providers: [TokenService, ReplayGuardService, SessionCacheService, RolePermissionsService, RoleAssignmentService, JwtStrategy, CryptoService, StorageService, TenantContextService, EmailService, EmailProcessor],
+  exports: [TokenService, ReplayGuardService, SessionCacheService, RolePermissionsService, RoleAssignmentService, CryptoService, StorageService, TenantContextService, EmailService],
 })
 export class CommonModule {}

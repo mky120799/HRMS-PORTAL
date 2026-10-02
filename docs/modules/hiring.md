@@ -67,30 +67,30 @@ All paths below are relative to `/api/v1`.
 | `POST` | `/hiring/jobs` | Admin |
 | `PATCH` | `/hiring/jobs/:id` | Admin |
 | `GET` | `/hiring/stages` | Admin, manager |
-| `POST` | `/hiring/stages` | Admin |
-| `PATCH` | `/hiring/stages/:id` | Admin |
-| `PUT` | `/hiring/stages/reorder` with `{ stageIds: string[] }` | Admin |
+| `POST` | `/hiring/stages` | `hiring.pipeline.manage` |
+| `PATCH` | `/hiring/stages/:id` | `hiring.pipeline.manage` |
+| `PUT` | `/hiring/stages/reorder` with `{ stageIds: string[] }` | `hiring.pipeline.manage` |
 
 ### Applications
 
 | Method | Path | Notes |
 |---|---|---|
 | `GET` | `/hiring/applications` | Filters: `jobId`, `status`, `source`, pagination |
-| `PATCH` | `/hiring/applications/:id` | Admin compatibility endpoint; shared transition rules |
-| `POST` | `/hiring/applications/:id/move` | Manager/admin; rollback `note` required for admins |
+| `PATCH` | `/hiring/applications/:id` | Compatibility endpoint; requires `hiring.pipeline.manage` and shared transition rules |
+| `POST` | `/hiring/applications/:id/move` | Requires `hiring.pipeline.manage`; backward moves require offer/admin authority and a `note` |
 | `GET` | `/hiring/applications/:id/timeline` | Immutable application history |
 | `GET` | `/hiring/applications/:id/resume` | Authenticated private stream; never a public or signed URL |
 | `POST` | `/hiring/applications/:id/schedule-interview` | Persists start, duration, location and schedule version |
-| `POST` | `/hiring/applications/:id/rescreen` | Admin + ENTERPRISE; durable AI job publication |
-| `GET/POST/DELETE` | `/hiring/applications/:id/feedback` | Read, upsert own, or delete own feedback |
-| `GET/POST` | `/hiring/applications/:id/assessments` | List or link external assessment requests |
+| `POST` | `/hiring/applications/:id/rescreen` | `hiring.assessments.manage` + ENTERPRISE; durable AI job publication |
+| `GET/POST/DELETE` | `/hiring/applications/:id/feedback` | Read with `hiring.read`; upsert/delete own with `hiring.feedback.submit` |
+| `GET/POST` | `/hiring/applications/:id/assessments` | Read requests with `hiring.read`; link external assessments with `hiring.assessments.manage` |
 
 ### Assessment integrations
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET/POST` | `/hiring/assessment-integrations` | Admin; secret returned only on creation |
-| `POST` | `/hiring/assessment-integrations/:id/rotate-webhook-secret` | Admin; old secret stops working |
+| `GET/POST` | `/hiring/assessment-integrations` | `hiring.assessments.manage`; secret returned only on creation |
+| `POST` | `/hiring/assessment-integrations/:id/rotate-webhook-secret` | `hiring.assessments.manage`; old secret stops working |
 | `POST` | `/hiring/assessment-integrations/:id/webhook` | Public HMAC-SHA256 callback; provider event IDs are idempotent |
 
 ## Timeline and analytics

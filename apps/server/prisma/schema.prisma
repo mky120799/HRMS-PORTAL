@@ -49,6 +49,13 @@ model Tenant {
   trialEndsAt           DateTime?
 
   users                          User[]
+  userSessions                   UserSession[]
+  mfaRecoveryCodes               MfaRecoveryCode[]
+  userPasswordHistory            UserPasswordHistory[]
+  authPolicy                     TenantAuthPolicy?
+  identityProviders              TenantIdentityProvider[]
+  customRoles                    CustomRole[]
+  scimGroups                     ScimGroup[]
   employees                      Employee[]
   jobs                           Job[]
   applications                   Application[]
@@ -84,22 +91,123 @@ model Tenant {
   performanceReviews             PerformanceReview[]
 }
 
+model TenantAuthPolicy {
+  id                   String   @id @default(uuid())
+  tenantId             String   @unique
+  allowPasswordLogin   Boolean  @default(true)
+  allowGoogleLogin     Boolean  @default(true)
+  requireMfaForAdmins  Boolean  @default(false)
+  requireMfaForAll     Boolean  @default(false)
+  passwordMinLength    Int      @default(10)
+  passwordHistoryCount Int      @default(0)
+  passwordExpiresDays  Int?
+  sessionIdleMinutes   Int?
+  sessionAbsoluteHours Int      @default(168)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model TenantIdentityProvider {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  providerType          String // OIDC, SAML
+  name                  String
+  issuerUrl             String?
+  clientId              String?
+  clientSecretEnc       String?
+  samlEntityId          String?
+  samlSsoUrl            String?
+  samlCertificateEnc    String?
+  allowedDomains        String[] @default([])
+  roleMapping           Json? // { "<IdP group or role>": "<HRMS role>" }, first match wins
+  attributeMapping      Json? // SAML: { email, firstName, lastName, displayName, groups } attribute names
+  jitProvisioning       Boolean  @default(false)
+  scimEnabled           Boolean  @default(false)
+  scimTokenHash         String?  @unique
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  scimGroups            ScimGroup[]
+
+  @@index([tenantId, providerType, isActive])
+}
+
+/// Workspace-defined role: a named set of permissions on top of a built-in base role.
+/// The base role (never ADMIN) keeps role-identity behaviour such as "managers see their team".
+model CustomRole {
+  id          String   @id @default(uuid())
+  tenantId    String
+  key         String // UPPER_SNAKE, unique per workspace; used in IdP role mapping as "custom:<KEY>"
+  name        String
+  description String?
+  baseRole    String
+  permissions String[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users  User[]
+
+  @@unique([tenantId, key])
+}
+
+/// Group pushed by an identity provider over SCIM (/scim/v2/Groups). Membership
+/// changes re-apply the provider's role mapping.
+model ScimGroup {
+  id          String   @id @default(uuid())
+  tenantId    String
+  providerId  String
+  displayName String
+  externalId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider TenantIdentityProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  members  ScimGroupMember[]
+
+  @@unique([providerId, displayName])
+  @@index([tenantId])
+}
+
+model ScimGroupMember {
+  groupId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  group ScimGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
 model User {
   id                  String    @id @default(uuid())
   tenantId            String
   email               String // always stored lower-case
   passwordHash        String // empty string for SSO-only users (can never match bcrypt)
   name                String
-  role                String    @default("EMPLOYEE") // SUPER_ADMIN, ADMIN, MANAGER, EMPLOYEE
+  role                String    @default("EMPLOYEE") // see src/common/constants/domain.ts for built-in roles
+  customRoleId        String? // when set, permissions come from this role; `role` holds its base role
+  roleManagedBy       String? // "idp:<providerId>" when the role was set from IdP groups; null when set in HRMS
   isActive            Boolean   @default(true)
   tokenVersion        Int       @default(0) // bump to revoke every outstanding refresh/invite/reset token
-  refreshToken        String? // bcrypt hash of the current refresh token (one session per user)
-  refreshTokenExpiry  DateTime?
+  refreshToken        String? // legacy one-session refresh token hash; replaced by UserSession
+  refreshTokenExpiry  DateTime? // legacy one-session refresh expiry; replaced by UserSession
   twoFactorSecret     String? // AES-256-GCM encrypted TOTP secret
   isTwoFactorEnabled  Boolean   @default(false)
+  lastTotpStep        Int? // last accepted TOTP time step; a code at or before it is refused (no reuse)
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
   lastLoginAt         DateTime?
+  passwordChangedAt   DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -109,10 +217,75 @@ model User {
   interviewFeedback   InterviewFeedback[]
   delegatedApprovals  LeaveApprovalDelegation[] @relation("Delegate")
   approvalDelegations LeaveApprovalDelegation[] @relation("Delegator")
+  sessions            UserSession[]
+  mfaRecoveryCodes    MfaRecoveryCode[]
+  passwordHistory     UserPasswordHistory[]
+  customRole          CustomRole?               @relation(fields: [customRoleId], references: [id], onDelete: Restrict)
+  scimGroups          ScimGroupMember[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([email])
+}
+
+model UserPasswordHistory {
+  id           String   @id @default(uuid())
+  tenantId     String
+  userId       String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, createdAt])
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid())
+  tenantId  String
+  userId    String
+  codeHash  String
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([userId, usedAt])
+}
+
+/// One-time-use guard for short-lived auth artifacts (SSO exchange codes, SAML assertion IDs).
+/// Inserting an existing key fails, which is how a replay is detected across API instances.
+model AuthReplayGuard {
+  key       String   @id
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model UserSession {
+  id               String    @id @default(uuid())
+  tenantId         String
+  userId           String
+  refreshTokenHash String    @unique
+  ipAddress        String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revokedReason    String?
+  updatedAt        DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 model Employee {

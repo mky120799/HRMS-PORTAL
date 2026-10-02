@@ -52,6 +52,18 @@ variable "rabbitmq_instance_type" {
   default     = "mq.m7g.large"
 }
 
+variable "redis_node_type" {
+  description = "ElastiCache node size; cache.t4g.micro is plenty for rate-limit counters"
+  type        = string
+  default     = "cache.t4g.micro"
+}
+
+variable "redis_nodes" {
+  description = "1 = single node; 2 = primary + replica with automatic failover (recommended for production)"
+  type        = number
+  default     = 2
+}
+
 variable "server_desired_count" {
   type    = number
   default = 2

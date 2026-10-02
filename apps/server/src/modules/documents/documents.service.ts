@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
+import { can } from '../../common/auth/permissions';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { DOCUMENT_MIME_TYPES, fieldValue, readValidatedFile } from '../../common/files/file-validation';
 import { DOCUMENT_TYPES } from '../../common/constants/domain';
@@ -38,7 +39,7 @@ export class DocumentsService {
   }
 
   async list(user: AuthUser, employeeId?: string) {
-    const scope = user.role === 'ADMIN' ? {} : { employee: { managerId: user.employeeId ?? '__none__' } };
+    const scope = can(user, 'documents.manage') ? {} : { employee: { managerId: user.employeeId ?? '__none__' } };
     return this.prisma.document.findMany({
       where: { tenantId: user.tenantId, ...scope, ...(employeeId ? { employeeId } : {}) },
       select: { ...PUBLIC_FIELDS, employee: { select: { id: true, firstName: true, lastName: true } } },
@@ -67,7 +68,7 @@ export class DocumentsService {
 
     const employeeId = meta.data.employeeId ?? user.employeeId;
     if (!employeeId) throw new BadRequestException('Your account is not linked to an employee profile');
-    if (employeeId !== user.employeeId && user.role !== 'ADMIN') throw new ForbiddenException('Only admins can upload documents for other employees');
+    if (employeeId !== user.employeeId && !can(user, 'documents.manage')) throw new ForbiddenException('Only document admins can upload documents for other employees');
     const employee = await this.prisma.employee.count({ where: { id: employeeId, tenantId: user.tenantId } });
     if (!employee) throw new NotFoundException('Employee not found');
 
@@ -108,7 +109,7 @@ export class DocumentsService {
   private async authorised(user: AuthUser, id: string) {
     const doc = await this.prisma.document.findFirst({ where: { id, tenantId: user.tenantId } });
     if (!doc) throw new NotFoundException('Document not found');
-    if (doc.employeeId !== user.employeeId && user.role !== 'ADMIN') throw new ForbiddenException('You cannot access this document');
+    if (doc.employeeId !== user.employeeId && !can(user, 'documents.manage')) throw new ForbiddenException('You cannot access this document');
     return doc;
   }
 }

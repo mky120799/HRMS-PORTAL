@@ -61,7 +61,7 @@ describe('Workflows', () => {
 
     it('prevents removing the last admin', async () => {
       const me = await t.request('GET', '/employees/me', { token: admin.token });
-      const res = await t.request('PATCH', `/employees/${me.body.data.id}/role`, { token: admin.token, body: { role: 'EMPLOYEE' } });
+      const res = await t.request('PATCH', `/employees/${me.body.data.id}/role`, { token: admin.token, body: { role: 'EMPLOYEE' }, headers: await t.stepUp(admin.token) });
       expect(res.status).toBe(403); // cannot change own role
     });
   });
@@ -174,8 +174,10 @@ describe('Workflows', () => {
     const period = { month: last.getUTCMonth() + 1, year: last.getUTCFullYear() };
 
     it('draft → finalize lifecycle with exact money maths', async () => {
+      const stepUp = await t.stepUp(admin.token);
       const salary = await t.request('PUT', `/payroll/salaries/${employee.employeeId}`, {
         token: admin.token,
+        headers: stepUp,
         body: { baseSalary: 30000, allowances: 10000, deductions: 200, monthlyTds: 1500, pfEnabled: true },
       });
       expect(salary.status).toBe(200);
@@ -188,7 +190,8 @@ describe('Workflows', () => {
 
       expect((await t.request('GET', '/payroll/my-payslips', { token: employee.token })).body.data).toHaveLength(0); // drafts are hidden
 
-      expect((await t.request('POST', '/payroll/runs/finalize', { token: admin.token, body: period })).status).toBe(201);
+      expect((await t.request('POST', '/payroll/runs/finalize', { token: admin.token, body: period })).status).toBe(403); // sensitive: needs step-up
+      expect((await t.request('POST', '/payroll/runs/finalize', { token: admin.token, body: period, headers: stepUp })).status).toBe(201);
       expect((await t.request('POST', '/payroll/runs/generate', { token: admin.token, body: period })).status).toBe(409);
 
       const mine = await t.request('GET', '/payroll/my-payslips', { token: employee.token });
@@ -264,7 +267,10 @@ describe('Workflows', () => {
       const applied = await t.request('POST', `/careers/${admin.tenant.slug}/jobs/${job.body.data.id}/apply`, multipart({ candidateName: 'Alex Assessed', candidateEmail: `assessed-${unique()}@example.com`, consent: 'true' }, { field: 'resume', filename: 'cv.pdf', content: FAKE_PDF, type: 'application/pdf' }));
       const integration = await t.request('POST', '/hiring/assessment-integrations', { token: admin.token, body: { provider: `TEST_${unique().toUpperCase()}`, displayName: 'Test Provider' } });
       const externalId = `assessment-${unique()}`;
-      const linked = await t.request('POST', `/hiring/applications/${applied.body.data.applicationId}/assessments`, { token: manager.token, body: { integrationId: integration.body.data.id, externalId } });
+      // Linking needs hiring.assessments.manage (recruiters/admins), which managers do not hold.
+      const managerLink = await t.request('POST', `/hiring/applications/${applied.body.data.applicationId}/assessments`, { token: manager.token, body: { integrationId: integration.body.data.id, externalId } });
+      expect(managerLink.status).toBe(403);
+      const linked = await t.request('POST', `/hiring/applications/${applied.body.data.applicationId}/assessments`, { token: admin.token, body: { integrationId: integration.body.data.id, externalId } });
       expect(linked.status).toBe(201);
 
       const payload = Buffer.from(JSON.stringify({ eventId: `event-${unique()}`, externalId, status: 'COMPLETED', score: 88, recommendation: 'ADVANCE' }));
@@ -372,13 +378,14 @@ describe('Workflows', () => {
       expect(export1.status).toBe(200);
       expect(JSON.parse(export1.raw.toString()).subject.email).toBe(leaver.email);
 
-      expect((await t.request('POST', `/gdpr/employees/${leaver.employeeId}/erase`, { token: admin.token })).status).toBe(400); // must offboard first
+      const stepUp = await t.stepUp(admin.token);
+      expect((await t.request('POST', `/gdpr/employees/${leaver.employeeId}/erase`, { token: admin.token, headers: stepUp })).status).toBe(400); // must offboard first
       expect((await t.request('POST', `/employees/${leaver.employeeId}/offboard`, { token: admin.token, body: { exitDate: new Date().toISOString().slice(0, 10) } })).status).toBe(201);
 
       expect((await t.request('POST', '/auth/refresh', { body: { refreshToken: refresh } })).status).toBe(401);
       expect((await t.request('POST', '/auth/login', { body: { tenantId: admin.tenant.slug, email: leaver.email, password: PASSWORD } })).status).toBe(401);
 
-      expect((await t.request('POST', `/gdpr/employees/${leaver.employeeId}/erase`, { token: admin.token })).status).toBe(201);
+      expect((await t.request('POST', `/gdpr/employees/${leaver.employeeId}/erase`, { token: admin.token, headers: stepUp })).status).toBe(201);
       const erased = await prisma.employee.findUniqueOrThrow({ where: { id: leaver.employeeId } });
       expect(erased.firstName).toBe('Former');
       expect(erased.email).not.toBe(leaver.email);

@@ -65,7 +65,7 @@ docs/                     this documentation
 
 | Folder | Responsibility |
 | --- | --- |
-| `auth/` | `TokenService` (purpose-bound JWTs), `@Public/@Roles/@CurrentUser/@CurrentTenant` decorators, `AuthUser` type |
+| `auth/` | `TokenService` (purpose-bound JWTs), `@Public/@Roles/@Permissions/@RequireStepUp/@CurrentUser/@CurrentTenant` decorators, `AuthUser` type, permission map, refresh/SSO cookies, session cache, replay guard |
 | `guards/` | Global guard chain (below) and `EmployeeLimitGuard` |
 | `tenant/` | `TenantContextService` — cached tenant snapshot (suspension, IP allow-list, plan) |
 | `crypto/` | AES-256-GCM field encryption |
@@ -142,33 +142,41 @@ application-layer controls plus tests are sufficient at this stage (see
 
 ```mermaid
 sequenceDiagram
-  participant U as User
+  participant U as User (browser)
   participant A as API
   U->>A: POST /auth/login {workspace, email, password}
   alt 2FA enabled
     A-->>U: {twoFactorRequired, tempToken (typ=two_factor, 5 min)}
     U->>A: POST /auth/2fa/authenticate {tempToken, code}
+  else MFA required by policy, not enrolled
+    A-->>U: {mfaEnrollmentRequired, enrollmentToken}
+    U->>A: POST /auth/2fa/enroll/start, then /enroll/complete {code}
   end
-  A-->>U: accessToken (15 min) + refreshToken (7 days)
-  Note over U,A: API calls send Authorization: Bearer accessToken
-  U->>A: POST /auth/refresh {refreshToken}
-  A-->>U: new pair (old refresh token now invalid)
+  A-->>U: body: accessToken (15 min) · Set-Cookie: hrms_refresh (httpOnly, 7 days)
+  Note over U,A: API calls send Authorization: Bearer accessToken (sid checked against UserSession)
+  U->>A: POST /auth/refresh (cookie sent automatically)
+  A-->>U: new access token + rotated cookie (old refresh token now invalid)
 ```
 
-* **Purpose-bound tokens.** `TokenService` issues six token types (access, refresh,
-  two_factor, invite, reset, sso_exchange + sso_state). Each is signed with its own key
-  derived via HMAC from `JWT_SECRET` *and* carries a `typ` claim, so a password-reset link
-  can never be replayed as an API token.
-* **Revocation via `tokenVersion`.** Refresh, invite, reset and 2FA tokens embed the user's
-  `tokenVersion`. Bumping it (password change/reset, offboarding, role change) invalidates
-  all of them at once. Invite/reset links are therefore single-use.
+* **Purpose-bound tokens.** `TokenService` issues nine token types (access, refresh,
+  two_factor, mfa_enroll, step_up, invite, reset, sso_state, sso_exchange). Each is signed
+  with its own key derived via HMAC from `JWT_SECRET` *and* carries a `typ` claim, so a
+  password-reset link can never be replayed as an API token.
+* **Revocation via `tokenVersion`.** Refresh, invite, reset, 2FA and SSO tokens embed the
+  user's `tokenVersion`. Bumping it (password change/reset, offboarding, role change, MFA
+  reset) invalidates all of them at once. Invite/reset links are therefore single-use.
+* **Refresh token never reaches page script.** It lives in an httpOnly, SameSite=Strict
+  cookie scoped to `/api/v1/auth`.
 * **Refresh rotation with reuse detection.** Only a SHA-256 hash of the current refresh token
-  is stored. Presenting an older (already rotated) token revokes the session — the signature
-  of a stolen token.
-* **Account lockout** after 5 failed attempts for 15 minutes; timing-equalised responses for
-  unknown users.
-* Access tokens are stateless for performance; revocation therefore takes effect within
-  their 15-minute lifetime.
+  is stored and rotation is a compare-and-swap. Presenting an older (already rotated) token
+  revokes the session — the signature of a stolen token. Tabs serialize refreshes so normal
+  use never looks like reuse.
+* **Near-instant revocation.** Each access token carries its session id; the API checks the
+  session is still active (30 s per-instance cache, cleared immediately where revoked).
+* **Step-up.** Sensitive routes (`@RequireStepUp()`) need a fresh MFA/password confirmation
+  bound to the same session.
+* **Account lockout** after 5 failed password/MFA/step-up attempts for 15 minutes;
+  timing-equalised responses for unknown users.
 
 Details: [modules/auth.md](modules/auth.md).
 

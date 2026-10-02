@@ -20,7 +20,7 @@ import {
   Activity,
   Wallet,
 } from "lucide-react";
-import { clearAuth, getAuth, hasRole } from "../lib/auth";
+import { clearAuth, getAuth, hasPermission, hasRole } from "../lib/auth";
 import { api } from "../lib/api";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback } from "./ui/avatar";
@@ -79,7 +79,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             Employees
           </NavLink>
 
-          {hasRole(["ADMIN", "EMPLOYEE", "MANAGER"]) && (
+          {hasRole(["ADMIN", "HR_ADMIN", "HR_MANAGER", "PAYROLL_ADMIN", "EMPLOYEE", "MANAGER"]) && (
             <NavLink
               to="/attendance"
               className={({ isActive }) =>
@@ -176,7 +176,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             Security & Privacy
           </NavLink>
 
-          {auth?.user.role === "ADMIN" || auth?.user.role === "MANAGER" ? (
+          {hasPermission(["analytics.read"]) ? (
             <NavLink
               to="/analytics"
               className={({ isActive }) =>
@@ -193,7 +193,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </NavLink>
           ) : null}
 
-          {(auth?.user.role === "ADMIN" || auth?.user.role === "MANAGER") && (
+          {hasPermission(["hiring.read"]) && (
             <NavLink
               to="/hiring"
               className={({ isActive }) =>
@@ -210,7 +210,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </NavLink>
           )}
 
-          {auth?.user.role === "ADMIN" && (
+          {hasPermission(["payroll.read", "payroll.run.manage", "payroll.finalize"]) && (
             <>
               <NavLink
                 to="/payroll"
@@ -226,7 +226,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Wallet size={20} />
                 Payroll
               </NavLink>
+            </>
+          )}
 
+          {hasPermission(["tenant.billing.manage"]) && (
+            <>
               <NavLink
                 to="/billing"
                 className={({ isActive }) =>
@@ -241,7 +245,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <CreditCard size={20} />
                 Billing
               </NavLink>
+            </>
+          )}
 
+          {hasPermission(["tenant.settings.manage"]) && (
+            <>
               <NavLink
                 to="/settings"
                 className={({ isActive }) =>
@@ -256,7 +264,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Settings size={20} />
                 Settings
               </NavLink>
+            </>
+          )}
 
+          {hasPermission(["audit.read"]) && (
+            <>
               <NavLink
                 to="/audit-logs"
                 className={({ isActive }) =>

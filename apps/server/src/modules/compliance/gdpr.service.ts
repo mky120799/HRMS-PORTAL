@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { SessionCacheService } from '../../common/auth/session-cache.service';
 import type { AuthUser } from '../../common/auth/auth-user';
 
 /**
@@ -20,6 +21,7 @@ export class GdprService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
+    private readonly sessionCache: SessionCacheService,
   ) {}
 
   async exportMyData(user: AuthUser) {
@@ -65,7 +67,11 @@ export class GdprService {
       if (employee.userId) {
         await tx.user.update({
           where: { id: employee.userId },
-          data: { email: placeholder, name: 'Former Employee', passwordHash: '', twoFactorSecret: null, isTwoFactorEnabled: false, isActive: false, refreshToken: null, tokenVersion: { increment: 1 } },
+          data: { email: placeholder, name: 'Former Employee', passwordHash: '', twoFactorSecret: null, isTwoFactorEnabled: false, isActive: false, refreshToken: null, refreshTokenExpiry: null, tokenVersion: { increment: 1 } },
+        });
+        await tx.userSession.updateMany({
+          where: { userId: employee.userId, revokedAt: null },
+          data: { revokedAt: new Date(), revokedReason: 'EMPLOYEE_ERASED' },
         });
       }
       await tx.leaveRequest.updateMany({ where: { employeeId: employee.id }, data: { reason: null, reviewNote: null } });
@@ -75,6 +81,7 @@ export class GdprService {
       await tx.salaryStructure.deleteMany({ where: { employeeId: employee.id } });
       await tx.notification.deleteMany({ where: { tenantId: admin.tenantId, recipientEmail: employee.email } });
     });
+    if (employee.userId) this.sessionCache.forgetUser(employee.userId);
     for (const d of employee.documents) if (d.storageKey) await this.storage.delete(d.storageKey);
 
     await this.audit.log({ tenantId: admin.tenantId, userId: admin.userId, action: 'EMPLOYEE_ERASED', resource: 'gdpr', resourceId: employee.id });

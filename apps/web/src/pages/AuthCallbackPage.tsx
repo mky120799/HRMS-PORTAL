@@ -5,8 +5,8 @@ import { api } from '../lib/api';
 import { setAuth } from '../lib/auth';
 
 /**
- * Google SSO lands here with a short-lived one-time `code` (never raw tokens in
- * the URL). We exchange it for a session via POST /auth/sso/exchange.
+ * SSO lands here with a short-lived one-time `code` (never raw tokens in the
+ * URL). We exchange it for a session via POST /auth/sso/exchange.
  */
 export function AuthCallbackPage() {
   const [params] = useSearchParams();
@@ -26,7 +26,13 @@ export function AuthCallbackPage() {
       .post('/auth/sso/exchange', { code })
       .then((res) => {
         if (res.data.twoFactorRequired) {
-          navigate('/login?error=sso_2fa', { replace: true });
+          sessionStorage.setItem('ssoTempToken', res.data.tempToken);
+          navigate('/login?sso_2fa=1', { replace: true });
+          return;
+        }
+        if (res.data.mfaEnrollmentRequired) {
+          sessionStorage.setItem('ssoEnrollmentToken', res.data.enrollmentToken);
+          navigate('/login?mfa_enroll=1', { replace: true });
           return;
         }
         setAuth(res.data);
@@ -39,7 +45,7 @@ export function AuthCallbackPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="text-center space-y-4">
         <Loader2 size={40} className="animate-spin text-indigo-600 mx-auto" />
-        <p className="text-slate-600 font-medium">Completing Google sign-in...</p>
+        <p className="text-slate-600 font-medium">Completing SSO sign-in...</p>
       </div>
     </div>
   );

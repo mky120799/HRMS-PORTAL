@@ -23,10 +23,10 @@ Leave policies, company holidays, requests, balances and manager approvals.
 ```mermaid
 stateDiagram-v2
   [*] --> PENDING: employee submits
-  PENDING --> APPROVED: manager / admin
-  PENDING --> REJECTED: manager / admin (+ note)
-  PENDING --> CANCELLED: employee or admin
-  APPROVED --> CANCELLED: admin, before start date
+  PENDING --> APPROVED: approver / leave admin
+  PENDING --> REJECTED: approver / leave admin (+ note)
+  PENDING --> CANCELLED: employee or leave admin
+  APPROVED --> CANCELLED: leave admin, before start date
   PENDING --> CANCELLED: employee offboarded
 ```
 
@@ -34,18 +34,18 @@ stateDiagram-v2
 
 | Method & path | Access | Notes |
 | --- | --- | --- |
-| `GET /leave-requests?scope=mine\|team\|all&status` | user / MANAGER / ADMIN | `team` = direct reports; `all` = admins only |
-| `GET /leave-requests/balance?year&employeeId` | self, manager, admin | quota, used, pending, remaining per type |
-| `POST /leave-requests` | user | `employeeId` only for admins filing on behalf |
-| `PATCH /leave-requests/:id/status` | MANAGER, ADMIN | approve / reject with note |
-| `POST /leave-requests/:id/cancel` | owner / ADMIN | |
-| `GET /leave-policies` · `PUT /leave-policies` | user · ADMIN | upsert a type |
-| `GET /leave-policies/:type/versions` | ADMIN | immutable entitlement-policy history |
-| `GET /holidays?year` · `POST /holidays` · `DELETE /holidays/:id` | user · ADMIN · ADMIN | |
-| `POST /leave-accruals/run` | ADMIN / scheduler | Idempotently award one month for `MONTHLY` policies |
-| `POST /leave-carry-forward/run` | ADMIN / scheduler | Idempotently carry a bounded unused balance into next year |
-| `POST /leave-balance-adjustments` | ADMIN | Append-only, idempotent credit/debit with a required reason |
-| `GET /leave-approval-rules` · `PUT /leave-approval-rules` | ADMIN | configure sequential direct-manager, role, or named-user steps |
+| `GET /leave-requests?scope=mine\|team\|all&status` | user / `leave.review` / `leave.admin` | `team` = direct reports; `all` = leave admins only |
+| `GET /leave-requests/balance?year&employeeId` | self, reviewer, `leave.admin` | quota, used, pending, remaining per type |
+| `POST /leave-requests` | user | `employeeId` only for `leave.admin` filing on behalf |
+| `PATCH /leave-requests/:id/status` | configured approver / `leave.admin` | approve / reject with note |
+| `POST /leave-requests/:id/cancel` | owner / `leave.admin` | |
+| `GET /leave-policies` · `PUT /leave-policies` | user · `leave.admin` | upsert a type |
+| `GET /leave-policies/:type/versions` | `leave.admin` | immutable entitlement-policy history |
+| `GET /holidays?year` · `POST /holidays` · `DELETE /holidays/:id` | user · `leave.admin` · `leave.admin` | |
+| `POST /leave-accruals/run` | `leave.admin` / scheduler | Idempotently award one month for `MONTHLY` policies |
+| `POST /leave-carry-forward/run` | `leave.admin` / scheduler | Idempotently carry a bounded unused balance into next year |
+| `POST /leave-balance-adjustments` | `leave.admin` | Append-only, idempotent credit/debit with a required reason |
+| `GET /leave-approval-rules` · `PUT /leave-approval-rules` | `leave.admin` | configure sequential direct-manager, role, or named-user steps |
 
 ## Rules
 * **Working days** are computed server-side: Mon–Fri minus tenant holidays. The client never
@@ -56,7 +56,7 @@ stateDiagram-v2
 * **Balance check** is performed in a PostgreSQL serializable transaction. Paid requests create
   an immediate ledger reservation, and retries use `requestKey`, so concurrent submissions cannot
   overspend a balance or create duplicate requests after a client timeout.
-* **Approval rights:** the employee's *direct manager* or an admin — never yourself.
+* **Approval rights:** configured approvers or `leave.admin` — never yourself.
 * **Race-safe approval:** the status change and its ledger conversion happen in one serializable
   transaction. A reservation is converted to consumption when approved, or released when
   rejected/cancelled; a duplicate decision receives 409.

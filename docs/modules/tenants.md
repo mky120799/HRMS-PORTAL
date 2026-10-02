@@ -16,9 +16,15 @@ Workspace settings, subscription status for the UI, and first-run sample data.
 | Method & path | Access | Notes |
 | --- | --- | --- |
 | `GET /tenants/subscription` | user | Plan, status, **effective plan**, trial days left, seats used / limit |
-| `GET /tenants/settings` | ADMIN | Webhook URLs are returned **masked** (write-only secrets) |
-| `PATCH /tenants/settings` | ADMIN | name, timezone, IP allow-list, Slack webhooks (`null` clears) |
-| `POST /tenants/seed-demo` | ADMIN | Once, only for an empty workspace |
+| `GET /tenants/settings` | `tenant.settings.manage` | Webhook URLs are returned **masked** (write-only secrets) |
+| `PATCH /tenants/settings` | `tenant.settings.manage` | name, timezone, IP allow-list, Slack webhooks (`null` clears) |
+| `GET /tenants/auth-policy` | `security.manage` | Reads tenant login, MFA, password and session policy |
+| `PATCH /tenants/auth-policy` | `security.manage` | Updates login methods, MFA enforcement, password history/expiry and session limits |
+| `GET /tenants/identity-providers` | `security.manage` | Lists OIDC/SAML provider configuration with secrets masked |
+| `POST /tenants/identity-providers` | `security.manage` | Stores OIDC/SAML setup data; OIDC is used by `/auth/oidc/start/:providerId` |
+| `PATCH /tenants/identity-providers/:id` | `security.manage` | Updates or disables a configured provider |
+| `POST /tenants/identity-providers/:id/scim-token` | `security.manage` | Rotates the provider SCIM bearer token and returns it once |
+| `POST /tenants/seed-demo` | `tenant.settings.manage` | Once, only for an empty workspace |
 
 ## Rules
 * **Tenant snapshot cache.** `TenantAccessGuard` runs on every authenticated request and needs
@@ -33,6 +39,14 @@ Workspace settings, subscription status for the UI, and first-run sample data.
   an admin make our servers call arbitrary URLs (SSRF, e.g. cloud metadata endpoints).
   Stored encrypted.
 * **Timezone** validated with `Intl`. Drives attendance "today" and analytics.
+* **Auth policy** is tenant-specific. It controls whether password/Google login
+  is allowed, MFA enforcement, password minimum length, password history count,
+  password expiry, session idle timeout and absolute session lifetime. MFA
+  enforcement refuses to save until affected active users are already enrolled.
+* **Enterprise SSO configuration** supports OIDC/SAML setup records with
+  encrypted client secrets/certificates and masked reads. OIDC and SAML runtime
+  sign-in are active for configured providers. SCIM bearer tokens are stored as
+  hashes and can be rotated from Settings.
 * **Demo seeder** (`tenant-demo-seeder.service.ts`): 20 employees in 5 departments with managers,
   salaries, 30 days of attendance, 3 finalized payroll months (computed with the real payroll
   calculator), leave history, jobs + applications and completed reviews — all in **one

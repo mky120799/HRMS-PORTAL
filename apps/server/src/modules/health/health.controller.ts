@@ -3,6 +3,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../common/auth/decorators';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RabbitMqService } from '../../common/messaging/rabbitmq.service';
+import { RateLimitStorage } from '../../common/rate-limit/rate-limit.storage';
 
 /**
  * - GET /health        liveness: the process is up (used by container restarts).
@@ -16,6 +17,7 @@ export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rabbit: RabbitMqService,
+    private readonly rateLimits: RateLimitStorage,
   ) {}
 
   @Get()
@@ -30,8 +32,10 @@ export class HealthController {
       this.withTimeout(this.rabbit.check()),
     ]);
     const [database, rabbitmq] = checks.map((c) => (c.status === 'fulfilled' ? 'up' : 'down'));
-    if (database !== 'up' || rabbitmq !== 'up') throw new ServiceUnavailableException({ message: 'Not ready', database, rabbitmq });
-    return { status: 'ready', database, rabbitmq };
+    // Informational: a Redis outage degrades rate limits to per-instance counters but does not stop serving.
+    const rateLimitStore = this.rateLimits.backend;
+    if (database !== 'up' || rabbitmq !== 'up') throw new ServiceUnavailableException({ message: 'Not ready', database, rabbitmq, rateLimitStore });
+    return { status: 'ready', database, rabbitmq, rateLimitStore };
   }
 
   /**

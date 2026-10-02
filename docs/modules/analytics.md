@@ -1,6 +1,6 @@
 # Analytics module
 
-`apps/server/src/modules/analytics` — `GET /analytics/overview` (ADMIN, MANAGER · plan BUSINESS)
+`apps/server/src/modules/analytics` — `GET /analytics/overview` (`analytics.read` · plan BUSINESS)
 
 ## Current coverage
 

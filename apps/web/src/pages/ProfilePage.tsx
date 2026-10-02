@@ -1,12 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { User, Mail, Shield, Building2, Calendar, MapPin } from 'lucide-react';
 import { api } from '../lib/api';
+import { hasPermission } from '../lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
 
 export function ProfilePage() {
+  const hasScopedAdminAccess = hasPermission(['tenant.settings.manage', 'employees.manage', 'payroll.run.manage', 'hiring.jobs.manage']);
   const { data: user, isLoading } = useQuery({
     queryKey: ['me'],
     queryFn: async () => (await api.get('/auth/me')).data
@@ -63,7 +65,7 @@ export function ProfilePage() {
                 <div className="font-semibold text-slate-800 mb-1">Security Role</div>
                 <div className="text-sm text-muted-foreground leading-relaxed">
                   You are currently logged in as an <strong className="text-slate-700">{user?.role}</strong>. This gives you 
-                  access to {user?.role === 'ADMIN' ? 'all administrative features and reporting.' : 'your basic attendance and employee records.'}
+                  access to {hasScopedAdminAccess ? 'the administrative features assigned to your role.' : 'your basic attendance and employee records.'}
                 </div>
               </div>
             </div>

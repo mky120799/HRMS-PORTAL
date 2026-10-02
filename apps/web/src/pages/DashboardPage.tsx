@@ -18,7 +18,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { getAuth } from '../lib/auth';
+import { hasPermission } from '../lib/auth';
 import { api } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { getErrorMessage } from '../lib/errors';
@@ -31,13 +31,12 @@ import { Separator } from '../components/ui/separator';
 
 export function DashboardPage() {
   const { showToast } = useToast();
-  const auth = getAuth();
   
-  const isManager = auth?.user.role === 'ADMIN' || auth?.user.role === 'MANAGER';
+  const canSeeAnalytics = hasPermission(['analytics.read']);
   const employees = useQuery({ queryKey: ['employees', 'count'], queryFn: async () => (await api.get('/employees', { params: { pageSize: 1 } })).data });
   const leaves = useQuery({ queryKey: ['leave', 'mine'], queryFn: async () => (await api.get('/leave-requests', { params: { scope: 'mine', pageSize: 100 } })).data });
   const attendance = useQuery({ queryKey: ['attendance'], queryFn: async () => (await api.get('/attendance/me')).data, retry: false });
-  const analytics = useQuery({ queryKey: ['analytics'], enabled: isManager, retry: false, queryFn: async () => (await api.get('/analytics/overview')).data });
+  const analytics = useQuery({ queryKey: ['analytics'], enabled: canSeeAnalytics, retry: false, queryFn: async () => (await api.get('/analytics/overview')).data });
 
   const hiringData = analytics.data?.hiringFunnel ?? [];
   const todayRecord = attendance.data?.today ?? null;
@@ -106,8 +105,8 @@ export function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold">{isManager ? analytics.data?.summary?.pendingLeaves ?? 0 : leaves.data?.items?.filter((l: any) => l.status === 'PENDING').length ?? 0}</div>
-            <p className="text-xs text-muted-foreground mt-2">{isManager ? 'Awaiting approval across the workspace' : 'Your requests awaiting approval'}</p>
+            <div className="text-4xl font-bold">{canSeeAnalytics ? analytics.data?.summary?.pendingLeaves ?? 0 : leaves.data?.items?.filter((l: any) => l.status === 'PENDING').length ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-2">{canSeeAnalytics ? 'Awaiting approval across the workspace' : 'Your requests awaiting approval'}</p>
           </CardContent>
         </Card>
       </div>

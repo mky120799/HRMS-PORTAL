@@ -9,6 +9,8 @@ import { AuditModule } from './common/audit/audit.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { TenantAccessGuard } from './common/guards/tenant-access.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { PermissionsGuard } from './common/guards/permissions.guard';
+import { StepUpGuard } from './common/guards/step-up.guard';
 import { SubscriptionGuard } from './common/guards/subscription.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -29,13 +31,21 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { BillingModule } from './modules/stripe/stripe.module';
 import { GdprModule } from './modules/compliance/gdpr.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { RolesModule } from './modules/roles/roles.module';
 import { RabbitMqModule } from './common/messaging/rabbitmq.module';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
+import { RateLimitStorage } from './common/rate-limit/rate-limit.storage';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv, cache: true, envFilePath: ['.env', '../../.env'] }),
     // Default: 100 requests/minute per client IP. Sensitive routes override with @Throttle().
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    // Counters live in Redis so every API instance shares them (in memory without REDIS_URL).
+    RateLimitModule,
+    ThrottlerModule.forRootAsync({
+      inject: [RateLimitStorage],
+      useFactory: (storage: RateLimitStorage) => ({ throttlers: [{ ttl: 60_000, limit: 100 }], storage }),
+    }),
     RabbitMqModule,
     PrismaModule,
     CommonModule,
@@ -56,14 +66,17 @@ import { RabbitMqModule } from './common/messaging/rabbitmq.module';
     BillingModule,
     GdprModule,
     PlatformModule,
+    RolesModule,
   ],
   providers: [
     // Guard order matters — each guard relies on the previous one:
-    // rate limit → authenticate → tenant checks (suspension, IP allow-list) → role → plan
+    // rate limit → authenticate → tenant checks (suspension, IP allow-list) → role → permission → step-up → plan
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: TenantAccessGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_GUARD, useClass: StepUpGuard },
     { provide: APP_GUARD, useClass: SubscriptionGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },

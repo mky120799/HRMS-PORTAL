@@ -83,6 +83,13 @@ export const EmailTemplates = {
       { label: 'Reset password', url: p.link },
     ),
 
+  securityNotice: (p: { name: string; title: string; body: string }) =>
+    build(p.title, p.title, [
+      `Hi ${escapeHtml(p.name)},`,
+      escapeHtml(p.body),
+      'If this was not you, contact your HRMS administrator immediately.',
+    ]),
+
   applicationReceived: (p: {
     candidateName: string;
     jobTitle: string;

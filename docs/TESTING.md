@@ -2,9 +2,10 @@
 
 | Layer | Where | What it proves | Run |
 | --- | --- | --- | --- |
-| Unit (50 tests) | `apps/server/src/**/*.spec.ts` | Pure logic plus hiring workflow permissions, outbox leases/retries, reminder concurrency, interview rescheduling, email idempotency/terminal failure, payroll maths, dates, security and sanitising | `npm test` |
+| Unit (101 tests) | `apps/server/src/**/*.spec.ts` | Pure logic plus hiring workflow permissions, outbox leases/retries, reminder concurrency, interview rescheduling, email idempotency/terminal failure, payroll maths, dates, security and sanitising; auth: token purposes, session checks, step-up guard, OIDC ID-token verification with real RSA keys, SAML Destination/Recipient, SSRF guard, IdP role/attribute mapping, recovery-code races | `npm test` |
+| API e2e — auth (15) | `apps/server/test/auth.e2e-spec.ts` | httpOnly refresh cookie, instant revocation, 2FA lockout, single-use recovery/SSO codes, required MFA enrolment, step-up, ADMIN-only IdP config, OIDC SSRF, IdP role mapping, SCIM protocol, security-event filter | `npm run test:e2e:api` |
 | API e2e — security (27) | `apps/server/test/security.e2e-spec.ts` | One test per audited vulnerability: tenant isolation, token confusion, RBAC, open relay, credential-link redaction, refresh reuse, lockout, enumeration, billing integrity, IP allow-list, SSRF, upload sniffing, error envelope | `npm run test:e2e:api` |
-| API e2e — workflows (18) | `apps/server/test/workflows.e2e-spec.ts` | Leave, attendance, payroll (exact figures + PDF), performance, hardened hiring workflow, assessment callback idempotency, offboarding, erasure, audit trail | same |
+| API e2e — workflows (19) | `apps/server/test/workflows.e2e-spec.ts` | Leave, attendance, payroll (exact figures + PDF), performance, hardened hiring workflow, assessment callback idempotency, offboarding, erasure, audit trail | same |
 | Browser (3) | `apps/e2e/tests/smoke.spec.ts` | Signup → sample data → key pages; login validation; public careers page | `npm run test:e2e:ui` |
 
 The API e2e tests boot the real Nest application in-process (`test/helpers.ts` reuses

@@ -10,7 +10,7 @@ Resume screening (background), resume parsing for recruiters, and an HR assistan
 | Method & path | Access | Limits |
 | --- | --- | --- |
 | `POST /ai/chat` `{ message }` | user | ≤ 1000 chars, 20/min |
-| `POST /ai/parse-resume` (multipart PDF ≤ 5 MB) | MANAGER, ADMIN | 10/min |
+| `POST /ai/parse-resume` (multipart PDF ≤ 5 MB) | `hiring.read` | 10/min |
 
 Screening runs in `HiringProcessor` (see [hiring.md](hiring.md)).
 

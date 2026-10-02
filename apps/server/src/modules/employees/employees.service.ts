@@ -2,7 +2,10 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { SessionCacheService } from '../../common/auth/session-cache.service';
+import { RoleAssignmentService, type RoleTarget } from '../../common/auth/role-assignment.service';
 import type { AuthUser } from '../../common/auth/auth-user';
+import { can } from '../../common/auth/permissions';
 import { paginate, paged } from '../../common/validation/common.schemas';
 import { parseDateOnly } from '../../common/utils/dates';
 import type { CreateEmployeeDto, ListEmployeesQuery, UpdateEmployeeDto } from './dto/create-employee.dto';
@@ -31,7 +34,7 @@ const FULL_FIELDS = {
   createdAt: true,
   updatedAt: true,
   manager: { select: { id: true, firstName: true, lastName: true } },
-  user: { select: { role: true, isActive: true } },
+  user: { select: { role: true, isActive: true, customRoleId: true, roleManagedBy: true } },
 } satisfies Prisma.EmployeeSelect;
 
 @Injectable()
@@ -39,6 +42,8 @@ export class EmployeesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly sessionCache: SessionCacheService,
+    private readonly roles: RoleAssignmentService,
   ) {}
 
   async list(user: AuthUser, q: ListEmployeesQuery) {
@@ -46,7 +51,7 @@ export class EmployeesService {
       tenantId: user.tenantId,
       anonymizedAt: null,
       ...(q.department ? { department: q.department } : {}),
-      ...(q.status ? { status: q.status } : user.role === 'ADMIN' ? {} : { status: { not: 'EXITED' } }),
+      ...(q.status ? { status: q.status } : can(user, 'employees.read_full') ? {} : { status: { not: 'EXITED' } }),
       ...(q.search
         ? {
             OR: [
@@ -58,7 +63,7 @@ export class EmployeesService {
           }
         : {}),
     };
-    const select = user.role === 'ADMIN' ? FULL_FIELDS : DIRECTORY_FIELDS;
+    const select = can(user, 'employees.read_full') ? FULL_FIELDS : DIRECTORY_FIELDS;
     const [items, total] = await Promise.all([
       this.prisma.employee.findMany({ where, select, orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }], ...paginate(q) }),
       this.prisma.employee.count({ where }),
@@ -72,7 +77,7 @@ export class EmployeesService {
   }
 
   async findOne(user: AuthUser, id: string) {
-    const canSeeFull = user.role === 'ADMIN' || user.employeeId === id || (await this.isManagerOf(user, id));
+    const canSeeFull = can(user, 'employees.read_full') || user.employeeId === id || (await this.isManagerOf(user, id));
     const employee = await this.prisma.employee.findFirst({
       where: { id, tenantId: user.tenantId },
       select: canSeeFull ? FULL_FIELDS : DIRECTORY_FIELDS,
@@ -171,35 +176,23 @@ export class EmployeesService {
           where: { id: employee.userId },
           data: { isActive: false, tokenVersion: { increment: 1 }, refreshToken: null, refreshTokenExpiry: null },
         });
+        await tx.userSession.updateMany({
+          where: { userId: employee.userId, revokedAt: null },
+          data: { revokedAt: new Date(), revokedReason: 'EMPLOYEE_OFFBOARDED' },
+        });
       }
     }, { isolationLevel: 'Serializable' });
+    if (employee.userId) this.sessionCache.forgetUser(employee.userId);
     await this.audit.log({ tenantId: user.tenantId, userId: user.userId, action: 'EMPLOYEE_OFFBOARDED', resource: 'employees', resourceId: id, newValues: { exitDate } });
     return { message: 'Employee offboarded and access revoked' };
   }
 
-  async changeRole(user: AuthUser, employeeId: string, role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE') {
-    const employee = await this.prisma.employee.findFirst({ where: { id: employeeId, tenantId: user.tenantId }, include: { user: true } });
-    if (!employee?.user) throw new NotFoundException('This employee has no user account yet — invite them first');
-    if (employee.user.id === user.userId) throw new ForbiddenException('You cannot change your own role');
-    if (employee.user.role === 'ADMIN' && role !== 'ADMIN') {
-      const admins = await this.prisma.user.count({ where: { tenantId: user.tenantId, role: 'ADMIN', isActive: true } });
-      if (admins <= 1) throw new BadRequestException('A workspace must keep at least one active admin');
-    }
-    // Revoke sessions so the new role takes effect on the next refresh rather than lingering for 7 days.
-    await this.prisma.user.update({
-      where: { id: employee.user.id },
-      data: { role, tokenVersion: { increment: 1 }, refreshToken: null, refreshTokenExpiry: null },
-    });
-    await this.audit.log({
-      tenantId: user.tenantId,
-      userId: user.userId,
-      action: 'ROLE_CHANGED',
-      resource: 'users',
-      resourceId: employee.user.id,
-      oldValues: { role: employee.user.role },
-      newValues: { role },
-    });
-    return { message: `Role updated to ${role}` };
+  /** Role rules (no escalation, last admin, session revocation, audit) live in RoleAssignmentService. */
+  async changeRole(user: AuthUser, employeeId: string, target: RoleTarget) {
+    const employee = await this.prisma.employee.findFirst({ where: { id: employeeId, tenantId: user.tenantId }, select: { userId: true } });
+    if (!employee?.userId) throw new NotFoundException('This employee has no user account yet — invite them first');
+    await this.roles.assign(user.tenantId, employee.userId, target, { kind: 'user', user });
+    return { message: 'Role updated' };
   }
 
   private async assertInTenant(tenantId: string, employeeId: string) {

@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EmailTemplates } from '../../common/email/templates';
 import type { AuthUser } from '../../common/auth/auth-user';
+import { can } from '../../common/auth/permissions';
 import { paginate, paged } from '../../common/validation/common.schemas';
 import type {
   ComposeEmailDto,
@@ -69,8 +70,8 @@ export class NotificationsService {
   ) {}
 
   async list(user: AuthUser, q: ListNotificationsQuery) {
-    if (q.scope === 'all' && user.role !== 'ADMIN')
-      throw new ForbiddenException('Only admins can view the delivery log');
+    if (q.scope === 'all' && !can(user, 'notifications.manage'))
+      throw new ForbiddenException('Only notification admins can view the delivery log');
     const audience: Prisma.NotificationWhereInput =
       q.scope === 'all'
         ? {}

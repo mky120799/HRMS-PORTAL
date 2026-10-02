@@ -7,7 +7,7 @@ import { HiringService } from './hiring.service';
 import { AssessmentIntegrationService } from './assessment-integration.service';
 import { HiringWorkflowService } from './hiring-workflow.service';
 import { HiringFeedbackService } from './hiring-feedback.service';
-import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Permissions, Public } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { RequiresPlan } from '../../common/decorators/plan.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -63,7 +63,7 @@ export class CareersController {
 @ApiBearerAuth()
 @Controller('hiring')
 @RequiresPlan('BASIC')
-@Roles('ADMIN', 'MANAGER')
+@Permissions('hiring.read')
 export class HiringController {
   constructor(
     private readonly hiring: HiringService,
@@ -78,13 +78,13 @@ export class HiringController {
   }
 
   @Post('jobs')
-  @Roles('ADMIN')
+  @Permissions('hiring.jobs.manage')
   createJob(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(createJobSchema)) dto: CreateJobDto) {
     return this.hiring.createJob(user.tenantId, dto);
   }
 
   @Patch('jobs/:id')
-  @Roles('ADMIN')
+  @Permissions('hiring.jobs.manage')
   updateJob(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(updateJobSchema)) dto: UpdateJobDto) {
     return this.hiring.updateJob(user.tenantId, id, dto);
   }
@@ -95,19 +95,19 @@ export class HiringController {
   }
 
   @Post('stages')
-  @Roles('ADMIN')
+  @Permissions('hiring.pipeline.manage')
   createStage(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(createHiringStageSchema)) dto: CreateHiringStageDto) {
     return this.workflow.createStage(user, dto);
   }
 
   @Patch('stages/:id')
-  @Roles('ADMIN')
+  @Permissions('hiring.pipeline.manage')
   updateStage(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(updateHiringStageSchema)) dto: UpdateHiringStageDto) {
     return this.workflow.updateStage(user, id, dto);
   }
 
   @Put('stages/reorder')
-  @Roles('ADMIN')
+  @Permissions('hiring.pipeline.manage')
   reorderStages(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(reorderHiringStagesSchema)) dto: ReorderHiringStagesDto) {
     return this.workflow.reorderStages(user, dto);
   }
@@ -123,6 +123,7 @@ export class HiringController {
   }
 
   @Post('applications/:id/move')
+  @Permissions('hiring.pipeline.manage')
   moveApplication(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(moveApplicationSchema)) dto: MoveApplicationDto) {
     return this.workflow.move(user, id, dto);
   }
@@ -134,37 +135,38 @@ export class HiringController {
   }
 
   @Patch('applications/:id')
-  @Roles('ADMIN')
+  @Permissions('hiring.pipeline.manage')
   updateStatus(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(updateApplicationSchema)) dto: { status: ApplicationStatus }) {
     return this.hiring.updateStatus(user, id, dto.status);
   }
 
   @Post('applications/:id/schedule-interview')
+  @Permissions('hiring.pipeline.manage')
   scheduleInterview(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(scheduleInterviewSchema)) dto: ScheduleInterviewDto) {
     return this.hiring.scheduleInterview(user, id, dto);
   }
 
   @Post('applications/:id/rescreen')
-  @Roles('ADMIN')
+  @Permissions('hiring.assessments.manage')
   @RequiresPlan('ENTERPRISE')
   rescreen(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.hiring.rescreen(user, id);
   }
 
   @Get('assessment-integrations')
-  @Roles('ADMIN')
+  @Permissions('hiring.assessments.manage')
   assessmentIntegrations(@CurrentUser() user: AuthUser) {
     return this.assessments.listIntegrations(user.tenantId);
   }
 
   @Post('assessment-integrations')
-  @Roles('ADMIN')
+  @Permissions('hiring.assessments.manage')
   createAssessmentIntegration(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(createAssessmentIntegrationSchema)) dto: CreateAssessmentIntegrationDto) {
     return this.assessments.createIntegration(user, dto);
   }
 
   @Post('assessment-integrations/:id/rotate-webhook-secret')
-  @Roles('ADMIN')
+  @Permissions('hiring.assessments.manage')
   rotateAssessmentWebhookSecret(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.assessments.rotateWebhookSecret(user, id);
   }
@@ -175,6 +177,7 @@ export class HiringController {
   }
 
   @Post('applications/:id/assessments')
+  @Permissions('hiring.assessments.manage')
   createAssessmentRequest(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(createAssessmentRequestSchema)) dto: CreateAssessmentRequestDto) {
     return this.assessments.createRequest(user, id, dto);
   }
@@ -187,6 +190,7 @@ export class HiringController {
   }
 
   @Post('applications/:id/feedback')
+  @Permissions('hiring.feedback.submit')
   upsertFeedback(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -196,6 +200,7 @@ export class HiringController {
   }
 
   @Delete('applications/:id/feedback')
+  @Permissions('hiring.feedback.submit')
   deleteFeedback(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.feedback.remove(user, id);
   }

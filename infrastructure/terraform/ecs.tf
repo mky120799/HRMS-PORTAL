@@ -64,7 +64,7 @@ locals {
   ]
 
   server_secrets = concat(
-    [for k in ["DATABASE_URL", "JWT_SECRET", "ENCRYPTION_KEY", "RABBITMQ_URL"] : { name = k, valueFrom = "${local.app_secret}:${k}::" }],
+    [for k in ["DATABASE_URL", "JWT_SECRET", "ENCRYPTION_KEY", "RABBITMQ_URL", "REDIS_URL"] : { name = k, valueFrom = "${local.app_secret}:${k}::" }],
     [for k in ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_BASIC", "STRIPE_PRICE_BUSINESS", "STRIPE_PRICE_ENTERPRISE", "GEMINI_API_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "SENTRY_DSN"] :
     { name = k, valueFrom = "${local.int_secret}:${k}::" }],
   )

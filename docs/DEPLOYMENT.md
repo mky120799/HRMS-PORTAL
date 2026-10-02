@@ -88,12 +88,14 @@ Validated at boot by `apps/server/src/config/env.ts`.
 | `RABBITMQ_URL` | yes | AMQP/AMQPS connection URL; Terraform supplies private Amazon MQ in AWS |
 | `JWT_SECRET` | yes, ≥ 32 chars | root for all token keys |
 | `ENCRYPTION_KEY` | yes, 32 bytes base64 | back it up; losing it loses 2FA secrets/webhooks |
-| `FRONTEND_URL`, `CORS_ORIGINS` | yes (https in prod) | links in emails, CORS allow-list |
+| `FRONTEND_URL`, `API_PUBLIC_URL`, `CORS_ORIGINS` | yes (https in prod) | links in emails, public API callbacks, CORS allow-list |
 | `TRUST_PROXY` | `true` behind ALB/nginx | makes client IPs correct |
+| `PUBLIC_SIGNUP_ENABLED` | optional | set `false` in controlled production launches |
 | `STORAGE_DRIVER=s3`, `AWS_S3_BUCKET_NAME`, `AWS_REGION` | prod | |
 | `EMAIL_DRIVER=ses`, `EMAIL_FROM` | prod | SES-verified domain |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | optional | AI features |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | optional | SSO |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | optional | Google SSO |
+| `OIDC_CALLBACK_URL` | optional | Generic OIDC callback URL; defaults to `API_PUBLIC_URL/api/v1/auth/oidc/callback` |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*` | optional | billing |
 | `SENTRY_DSN` | optional | error tracking |
 | `ENABLE_SWAGGER` | optional | defaults off in production |

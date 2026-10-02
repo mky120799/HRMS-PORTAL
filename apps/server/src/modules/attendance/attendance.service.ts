@@ -7,6 +7,7 @@ import type { TenantSnapshot } from '../../common/tenant/tenant-context.service'
 import { EmailTemplates } from '../../common/email/templates';
 import { parseDateOnly, todayIn, toDateOnly } from '../../common/utils/dates';
 import { NotificationPublisherService } from '../notifications/notification-publisher.service';
+import { can } from '../../common/auth/permissions';
 
 const HALF_DAY_MINUTES = 4 * 60;
 
@@ -112,7 +113,7 @@ export class AttendanceService {
     if (user.role === 'MANAGER') {
       if (!user.employeeId) throw new ForbiddenException();
       scope = { managerId: user.employeeId };
-    } else if (user.role !== 'ADMIN') {
+    } else if (!can(user, 'attendance.roster.read')) {
       throw new ForbiddenException();
     }
     const employees = await this.prisma.employee.findMany({

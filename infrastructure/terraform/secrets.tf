@@ -23,6 +23,7 @@ resource "aws_secretsmanager_secret_version" "app" {
     JWT_SECRET     = random_password.jwt.result
     ENCRYPTION_KEY = random_id.encryption_key.b64_std
     RABBITMQ_URL    = replace(aws_mq_broker.main.instances[0].endpoints[0], "amqps://", "amqps://hrms:${random_password.rabbitmq.result}@")
+    REDIS_URL      = "rediss://:${random_password.redis.result}@${aws_elasticache_replication_group.main.primary_endpoint_address}:6379"
   })
 }
 

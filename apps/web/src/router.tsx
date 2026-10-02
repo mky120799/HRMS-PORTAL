@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { getAuth, hasRole, type Role } from './lib/auth';
+import { getAuth, hasPermission, hasRole, type Permission, type Role } from './lib/auth';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
@@ -47,6 +47,11 @@ function RequireRole({ allowed }: { allowed: Role[] }) {
   return <Outlet />;
 }
 
+function RequirePermission({ allowed }: { allowed: Permission[] }) {
+  if (!hasPermission(allowed)) return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
 export function AppRouter() {
   return (
     <Suspense fallback={<Loading />}>
@@ -68,14 +73,22 @@ export function AppRouter() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/security" element={<SecurityPage />} />
-        <Route element={<RequireRole allowed={['ADMIN', 'MANAGER']} />}>
+        <Route element={<RequirePermission allowed={['analytics.read']} />}>
           <Route path="/analytics" element={<AnalyticsPage />} />
+        </Route>
+        <Route element={<RequirePermission allowed={['hiring.read']} />}>
           <Route path="/hiring" element={<HiringPage />} />
         </Route>
-        <Route element={<RequireRole allowed={['ADMIN']} />}>
+        <Route element={<RequirePermission allowed={['payroll.read', 'payroll.run.manage', 'payroll.finalize']} />}>
           <Route path="/payroll" element={<PayrollAdminPage />} />
+        </Route>
+        <Route element={<RequirePermission allowed={['tenant.settings.manage']} />}>
           <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+        <Route element={<RequirePermission allowed={['tenant.billing.manage']} />}>
           <Route path="/billing" element={<BillingPage />} />
+        </Route>
+        <Route element={<RequirePermission allowed={['audit.read']} />}>
           <Route path="/audit-logs" element={<AuditLogsPage />} />
         </Route>
         <Route element={<RequireRole allowed={['SUPER_ADMIN']} />}>

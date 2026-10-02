@@ -1,7 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Pagination } from '../validation/common.schemas';
 import { paginate, paged } from '../validation/common.schemas';
+
+/**
+ * Security events: everything about sign-in, sessions, MFA, step-up, auth
+ * policy, SSO configuration and identity-provider provisioning. Taxonomy:
+ * docs/modules/auth.md#security-event-taxonomy.
+ */
+const SECURITY_EVENTS: Prisma.AuditLogWhereInput = {
+  OR: [
+    { resource: { in: ['auth', 'tenant_auth_policy', 'tenant_identity_provider', 'custom_role'] } },
+    { action: { startsWith: 'SCIM_' } },
+    { action: { in: ['SSO_USER_PROVISIONED', 'ROLE_SYNCED_FROM_IDP', 'ROLE_CHANGED', 'INVITE'] } },
+  ],
+};
 
 export interface AuditEntry {
   tenantId: string;
@@ -44,8 +58,14 @@ export class AuditService {
     }
   }
 
-  async list(tenantId: string, filters: { resource?: string; userId?: string }, p: Pagination) {
-    const where = { tenantId, ...(filters.resource ? { resource: filters.resource } : {}), ...(filters.userId ? { userId: filters.userId } : {}) };
+  async list(tenantId: string, filters: { resource?: string; userId?: string; action?: string; category?: 'security' }, p: Pagination) {
+    const where: Prisma.AuditLogWhereInput = {
+      tenantId,
+      ...(filters.resource ? { resource: filters.resource } : {}),
+      ...(filters.userId ? { userId: filters.userId } : {}),
+      ...(filters.action ? { action: filters.action } : {}),
+      ...(filters.category === 'security' ? SECURITY_EVENTS : {}),
+    };
     const [items, total] = await Promise.all([
       this.prisma.auditLog.findMany({ where, orderBy: { createdAt: 'desc' }, ...paginate(p) }),
       this.prisma.auditLog.count({ where }),
