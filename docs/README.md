@@ -14,6 +14,8 @@
 | Module | Summary |
 | --- | --- |
 | [Auth](modules/auth.md) | Sign-up, login, sessions, invites, reset, 2FA, Google SSO |
+| [Authentication tutorial](modules/authentication-tutorial.md) | Plain-language guide to passwords, sessions, MFA, SSO, OIDC, SAML and SCIM |
+| [Authentication hardening plan](modules/authentication-hardening-plan.md) | Checkbox implementation plan for production-grade auth |
 | [Tenants](modules/tenants.md) | Workspace settings, IP allow-list, Slack, sample data |
 | [Employees](modules/employees.md) | Directory, reporting lines, offboarding, roles |
 | [Leave](modules/leave.md) | Policies, holidays, requests, balances, approvals |
