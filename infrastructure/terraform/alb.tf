@@ -15,7 +15,7 @@ resource "aws_lb_target_group" "server" {
   vpc_id               = aws_vpc.main.id
   deregistration_delay = 30
   health_check {
-    path                = "/api/v1/health/ready" # only route to tasks that can reach DB + Redis
+    path                = "/api/v1/health/ready" # only route to tasks that can reach DB + RabbitMQ
     matcher             = "200"
     interval            = 15
     healthy_threshold   = 2

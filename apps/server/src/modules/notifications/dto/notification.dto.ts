@@ -15,5 +15,26 @@ export const announceSchema = z.object({
 });
 export type AnnounceDto = z.infer<typeof announceSchema>;
 
-export const listNotificationsSchema = paginationSchema.extend({ scope: z.enum(['mine', 'all']).default('mine') });
+export const listNotificationsSchema = paginationSchema.extend({
+  scope: z.enum(['mine', 'all']).default('mine'),
+  category: z.string().trim().min(1).max(50).optional(),
+  unread: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
+});
 export type ListNotificationsQuery = z.infer<typeof listNotificationsSchema>;
+
+export const updateNotificationPreferenceSchema = z.object({
+  eventType: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .regex(/^(\*|[A-Z][A-Z0-9_]*)$/, 'Use * or an uppercase event type'),
+  channel: z.enum(['IN_APP', 'EMAIL']),
+  enabled: z.boolean(),
+});
+export type UpdateNotificationPreferenceDto = z.infer<
+  typeof updateNotificationPreferenceSchema
+>;

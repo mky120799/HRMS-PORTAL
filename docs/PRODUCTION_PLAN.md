@@ -45,7 +45,7 @@ payroll with flat 10 % "TDS" and floats for money. Every one of these is rewritt
 module docs.
 
 ### P2 — Engineering quality (done)
-* 79 automated tests (previously 1 passing scaffold test): 33 unit, 43 API e2e against real Postgres/Redis, 3 browser.
+* 98 automated tests (previously 1 passing scaffold test): 50 unit, 45 API e2e against real PostgreSQL/RabbitMQ, 3 browser.
 * Structured JSON logs with request ids; Sentry; CloudWatch alarms.
 * Pagination everywhere lists can grow; zod validation on every input.
 * Audit trail for all mutations plus business events.
@@ -95,7 +95,7 @@ Ordered by value to a paying customer.
 | High | Refresh token in httpOnly SameSite cookie; SSO state bound to a nonce cookie | Closes the two main residual auth risks |
 | High | Redis-backed rate limiting and a small cache layer | Correct limits across multiple API instances |
 | Medium | PostgreSQL Row-Level Security as a second isolation layer | Defence in depth for tenant data |
-| Medium | Separate worker service for queues; dead-letter alerting | Isolate background load from API latency |
+| Medium | Separate worker service for queues | Isolate background load from API latency; dead-letter and terminal-failure alerting are already configured |
 | Medium | Attendance regularisation, shifts, geo/IP office check-in | Common customer requests |
 | Medium | Bulk employee import (CSV) with validation report | Faster onboarding of new customers |
 | Medium | Audit logs to write-once storage (S3 Object Lock) | Tamper evidence for compliance audits |

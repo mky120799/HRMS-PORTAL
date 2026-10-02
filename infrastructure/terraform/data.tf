@@ -50,32 +50,35 @@ resource "aws_db_instance" "main" {
   auto_minor_version_upgrade   = true
 }
 
-# ─── Redis (ElastiCache) — BullMQ queues ──────────────────────────────────────
-resource "random_password" "redis" {
+# ─── RabbitMQ (Amazon MQ) — durable background work ──────────────────────────
+resource "random_password" "rabbitmq" {
   length  = 32
   special = false
 }
 
-resource "aws_elasticache_subnet_group" "main" {
-  name       = "${local.name}-redis"
-  subnet_ids = aws_subnet.private[*].id
-}
+resource "aws_mq_broker" "main" {
+  broker_name                = "${local.name}-rabbitmq"
+  engine_type                = "RabbitMQ"
+  engine_version             = "4.3"
+  host_instance_type         = var.rabbitmq_instance_type
+  deployment_mode            = "CLUSTER_MULTI_AZ"
+  publicly_accessible        = false
+  auto_minor_version_upgrade = true
+  subnet_ids                 = aws_subnet.private[*].id
+  security_groups            = [aws_security_group.rabbitmq.id]
 
-resource "aws_elasticache_replication_group" "main" {
-  replication_group_id       = "${local.name}-redis"
-  description                = "HRMS job queues"
-  engine                     = "redis"
-  engine_version             = "7.1"
-  node_type                  = "cache.t4g.small"
-  num_cache_clusters         = 2
-  automatic_failover_enabled = true
-  port                       = 6379
-  subnet_group_name          = aws_elasticache_subnet_group.main.name
-  security_group_ids         = [aws_security_group.redis.id]
-  at_rest_encryption_enabled = true
-  transit_encryption_enabled = true
-  auth_token                 = random_password.redis.result
-  snapshot_retention_limit   = 3
+  logs {
+    general = true
+  }
+
+  encryption_options {
+    use_aws_owned_key = true
+  }
+
+  user {
+    username = "hrms"
+    password = random_password.rabbitmq.result
+  }
 }
 
 # ─── S3 — private documents & resumes ─────────────────────────────────────────

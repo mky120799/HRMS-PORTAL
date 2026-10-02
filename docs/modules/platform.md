@@ -16,6 +16,7 @@ Operators sign in to a dedicated `platform` workspace (created with
 | Endpoint | Purpose | Used by |
 | --- | --- | --- |
 | `GET /health` | process is alive | container health check |
-| `GET /health/ready` | DB `SELECT 1` and Redis `PING` within 2 s each, else 503 | ALB target group — traffic only goes to instances that can serve it |
+| `GET /health/ready` | DB `SELECT 1` and RabbitMQ queue checks within 2 s each, else 503 | ALB target group — traffic only goes to instances that can serve it |
+| `GET /health/queues` | RabbitMQ publishing/queue availability and dead-letter queue names to alert on | Production monitor |
 
 Both are public and exempt from rate limiting and request logging.

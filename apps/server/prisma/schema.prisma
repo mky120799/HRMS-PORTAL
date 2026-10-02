@@ -67,6 +67,9 @@ model Tenant {
   leaveApprovalFollowUps LeaveApprovalFollowUp[]
   holidays           Holiday[]
   notifications      Notification[]
+  notificationEvents NotificationEvent[]
+  notificationOutboxEvents NotificationOutboxEvent[]
+  notificationPreferences NotificationPreference[]
   attendance         AttendanceRecord[]
   salaryStructures   SalaryStructure[]
   payslips           Payslip[]
@@ -154,7 +157,7 @@ model LeavePolicy {
   accrualMode String   @default("ANNUAL_GRANT") // ANNUAL_GRANT, MONTHLY, PER_PAY_PERIOD
   carryForwardLimit Decimal? @db.Decimal(8, 2)
   allowNegative Boolean @default(false)
-  effectiveFrom DateTime @default(now()) @db.Date
+  effectiveFrom DateTime @default(dbgenerated("CURRENT_DATE")) @db.Date
   effectiveTo   DateTime? @db.Date
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -226,7 +229,7 @@ model LeaveApprovalDelegation {
   delegator User   @relation("Delegator", fields: [delegatorId], references: [id])
   delegate  User   @relation("Delegate", fields: [delegateId], references: [id])
 
-  @@unique([tenantId, delegatorId, delegateId, startsAt])
+  @@unique([tenantId, delegatorId, delegateId, startsAt], map: "LeaveApprovalDelegation_tenantId_delegatorId_delegateId_startsA")
   @@index([tenantId, delegateId, startsAt])
 }
 
@@ -540,6 +543,9 @@ model HiringOutboxEvent {
 model Notification {
   id              String    @id @default(uuid())
   tenantId        String
+  eventId         String?
+  eventType       String?
+  category        String    @default("GENERAL")
   channel         String // EMAIL, IN_APP
   title           String
   body            String // credential-bearing emails are stored redacted
@@ -550,14 +556,86 @@ model Notification {
   idempotencyKey  String?
   metadata        Json?
   error           String?
+  processingAt    DateTime?
   sentAt          DateTime?
+  readAt          DateTime?
+  archivedAt      DateTime?
+  link             String?
   createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant Tenant             @relation(fields: [tenantId], references: [id])
+  event  NotificationEvent? @relation(fields: [eventId], references: [id])
 
   @@index([tenantId, createdAt])
   @@index([tenantId, recipientUserId])
+  @@index([tenantId, recipientUserId, readAt, archivedAt])
+  @@index([eventId])
   @@unique([tenantId, idempotencyKey])
+}
+
+/// One business occurrence, independent of how it is delivered. For example,
+/// a LEAVE_APPROVED event can create both IN_APP and EMAIL notifications.
+model NotificationEvent {
+  id          String   @id @default(uuid())
+  tenantId    String
+  eventKey    String
+  eventType   String
+  category    String   @default("GENERAL")
+  actorUserId String?
+  data        Json
+  createdAt   DateTime @default(now())
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id])
+  notifications Notification[]
+  outboxEvents NotificationOutboxEvent[]
+
+  @@unique([tenantId, eventKey])
+  @@index([tenantId, eventType, createdAt])
+}
+
+/// Transactional hand-off from PostgreSQL to RabbitMQ. Rows are leased so
+/// multiple API instances can drain the same table without double ownership.
+model NotificationOutboxEvent {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  notificationEventId String
+  eventKey            String
+  type                String    // EMAIL (additional channel adapters can be added later)
+  payload             Json
+  status              String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  attempts            Int       @default(0)
+  availableAt         DateTime  @default(now())
+  lockedAt            DateTime?
+  lastError           String?
+  processedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+  notificationEvent NotificationEvent @relation(fields: [notificationEventId], references: [id])
+
+  @@unique([tenantId, eventKey])
+  @@index([status, availableAt])
+  @@index([tenantId, notificationEventId])
+}
+
+/// Per-user channel choice. Missing rows mean the channel is enabled. Events
+/// marked mandatory by the publisher ignore opt-outs (security/compliance).
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  eventType String   @default("*")
+  channel   String   // IN_APP, EMAIL, SLACK
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, userId, eventType, channel])
+  @@index([tenantId, userId])
 }
 
 model AttendanceRecord {

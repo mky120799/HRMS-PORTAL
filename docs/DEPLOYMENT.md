@@ -35,7 +35,7 @@ Two supported targets:
    `AWS_REGION`, and add required reviewers to the `production` environment.
 
 ### Release flow
-Push to `main` → CI runs typecheck, unit, API e2e (real Postgres/Redis), browser e2e, image build
+Push to `main` → CI runs typecheck, unit, API e2e (real PostgreSQL/RabbitMQ), browser e2e, image build
 and Trivy scan → a reviewer approves the `production` environment → `deploy.sh`:
 
 1. registers new task-definition revisions for the commit's image tag;
@@ -61,6 +61,7 @@ because old and new tasks overlap during a rollout.
 | Rotate DB password | `terraform apply -replace=random_password.db`, then redeploy. |
 | Scale | Autoscaling targets 60 % CPU (2–10 tasks). Adjust in `ecs.tf`. |
 | Logs | CloudWatch `/ecs/hrms-production/server`; search by `reqId=` from a user's error message. |
+| Queues | Amazon MQ RabbitMQ uses a private Multi-AZ cluster; monitor CloudWatch backlog alarms, Sentry terminal failures, and `.dead` queues. |
 | Suspend a customer | Platform console → Suspend (effective within 30 s). |
 
 ## Single host (docker compose)
@@ -84,7 +85,7 @@ Validated at boot by `apps/server/src/config/env.ts`.
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | add `sslmode=require` in production |
-| `RABBITMQ_URL` | AMQP connection URL required | |
+| `RABBITMQ_URL` | yes | AMQP/AMQPS connection URL; Terraform supplies private Amazon MQ in AWS |
 | `JWT_SECRET` | yes, ≥ 32 chars | root for all token keys |
 | `ENCRYPTION_KEY` | yes, 32 bytes base64 | back it up; losing it loses 2FA secrets/webhooks |
 | `FRONTEND_URL`, `CORS_ORIGINS` | yes (https in prod) | links in emails, CORS allow-list |

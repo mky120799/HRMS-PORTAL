@@ -15,8 +15,8 @@ flowchart LR
     ALB -- "/*" --> WEB[web · nginx<br/>static SPA]
     ALB -- "/api/*" --> API[server · NestJS on Fastify<br/>ECS Fargate × N]
     API --> PG[(PostgreSQL<br/>RDS Multi-AZ)]
-    API --> RD[(Redis<br/>ElastiCache)]
-    RD --> WK[BullMQ workers<br/>same process]
+    API --> MQ[(RabbitMQ<br/>Amazon MQ Multi-AZ)]
+    MQ --> WK[Queue consumers<br/>same process]
     API --> S3[(S3<br/>private files)]
     WK --> SES[SES email]
     WK --> GEM[Gemini API]
@@ -31,7 +31,7 @@ flowchart LR
 | API | NestJS 11 on Fastify, TypeScript | Modules/DI keep features isolated; Fastify is ~2× Express throughput and has first-class multipart streaming |
 | Validation | zod | One schema gives runtime validation *and* the TypeScript type; unknown keys are stripped (mass-assignment protection) |
 | Database | PostgreSQL 16 via Prisma | Relational data with strong constraints (unique, FK); Prisma migrations are versioned SQL |
-| Queue | BullMQ on Redis | Email and AI screening run off the request path with retries and backoff |
+| Queue | RabbitMQ on Amazon MQ | Durable email, AI and leave work with publisher confirms, delayed retries and dead-letter queues |
 | Files | S3 (private) | Durable, encrypted; files are streamed through authorised endpoints, never public URLs |
 | Web | React 18, React Query, Tailwind, Radix UI | Server-state caching, accessible primitives; routes are code-split |
 | Infra | Terraform, ECS Fargate, ALB, WAF, Secrets Manager, CloudWatch | Managed, horizontally scalable, no servers to patch |
@@ -217,8 +217,9 @@ erDiagram
 
 | Queue | Producer | Worker | Retry policy |
 | --- | --- | --- | --- |
-| `email` | `EmailService.send` (auth, leave, hiring, announcements) | `EmailProcessor` → SES | 5 attempts, exponential backoff from 30 s; Notification row tracks QUEUED → SENT/FAILED |
-| `hiring` | Public application, re-screen | `HiringProcessor` → PDF text → Gemini | 3 attempts, exponential backoff from 60 s |
+| `hrms.email` | `EmailService.send` (auth, leave, hiring, announcements) | `EmailProcessor` → SES | 5 attempts, exponential backoff from 30 s; recoverable notification claim |
+| `hrms.hiring` | Hiring outbox | `HiringProcessor` → PDF text → Gemini | 3 attempts, exponential backoff from 60 s |
+| `hrms.leave-processing` | Leave scheduler | Leave entitlement/accrual worker | 5 attempts, exponential backoff from 60 s |
 
 Workers run inside the API process (simplest to operate). If queue load grows, the same
 image can run as a separate "worker" ECS service.
@@ -231,8 +232,9 @@ image can run as a separate "worker" ECS service.
 * **Request ids:** generated (or taken from `x-request-id`), returned in every response and
   error body — support can find the exact log line from a user's screenshot.
 * **Errors:** Sentry (optional, `SENTRY_DSN`) with `sendDefaultPii: false`.
-* **Health:** `/health` (liveness) and `/health/ready` (DB + Redis, used by the ALB).
-* **Alarms:** API 5xx, latency, no healthy hosts, DB CPU, DB storage → SNS email
+* **Health:** `/health` (liveness), `/health/ready` (DB + RabbitMQ), and `/health/queues`.
+* **Alarms:** API 5xx, latency, no healthy hosts, DB CPU/storage and RabbitMQ backlog → SNS email;
+  terminal outbox/dead-letter failures are reported to Sentry
   (`infrastructure/terraform/monitoring.tf`).
 * **Audit trail:** see [modules/audit.md](modules/audit.md).
 

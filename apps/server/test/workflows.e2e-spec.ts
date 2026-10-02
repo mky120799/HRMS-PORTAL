@@ -274,6 +274,86 @@ describe('Workflows', () => {
       expect((await callback()).body.data).toEqual({ received: true, duplicate: true });
     });
 
+    it('derives stage durations and offer acceptance from trustworthy event history', async () => {
+      const metricsTenant = await t.signup(`Metrics ${unique()}`);
+      const job = await t.request('POST', '/hiring/jobs', {
+        token: metricsTenant.token,
+        body: { title: 'Data Engineer', department: 'Engineering', description: 'Build trustworthy recruiting data pipelines.' },
+      });
+      const stages = (await t.request('GET', '/hiring/stages', { token: metricsTenant.token })).body.data;
+      const appliedStage = stages.find((stage: any) => stage.category === 'APPLIED');
+      const offeredStage = stages.find((stage: any) => stage.category === 'OFFERED');
+      const hiredStage = stages.find((stage: any) => stage.category === 'HIRED');
+      const rejectedStage = stages.find((stage: any) => stage.category === 'REJECTED');
+      const customStage = (
+        await t.request('POST', '/hiring/stages', {
+          token: metricsTenant.token,
+          body: { key: `TECH_${unique().toUpperCase()}`, name: 'Technical screen', category: 'SCREENING', position: 25 },
+        })
+      ).body.data;
+      const day = (value: number) => new Date(`2026-01-0${value}T00:00:00.000Z`);
+
+      await prisma.application.create({
+        data: {
+          tenantId: metricsTenant.tenant.id,
+          jobId: job.body.data.id,
+          stageId: rejectedStage.id,
+          candidateName: 'Rejected Offer',
+          candidateEmail: `rejected-${unique()}@example.test`,
+          status: 'REJECTED',
+          createdAt: day(1),
+          events: {
+            create: [
+              { tenantId: metricsTenant.tenant.id, type: 'APPLICATION_SUBMITTED', createdAt: day(1), metadata: { stageId: appliedStage.id, stageName: appliedStage.name } },
+              { tenantId: metricsTenant.tenant.id, type: 'STAGE_CHANGED', createdAt: day(3), metadata: { toStatus: 'SCREENING', toStageId: customStage.id, toStageName: customStage.name } },
+              { tenantId: metricsTenant.tenant.id, type: 'STAGE_CHANGED', createdAt: day(6), metadata: { toStatus: 'OFFERED', toStageId: offeredStage.id, toStageName: offeredStage.name } },
+              { tenantId: metricsTenant.tenant.id, type: 'STAGE_CHANGED', createdAt: day(8), metadata: { toStatus: 'REJECTED', toStageId: rejectedStage.id, toStageName: rejectedStage.name } },
+            ],
+          },
+        },
+      });
+      await prisma.application.create({
+        data: {
+          tenantId: metricsTenant.tenant.id,
+          jobId: job.body.data.id,
+          stageId: hiredStage.id,
+          candidateName: 'Accepted Offer',
+          candidateEmail: `hired-${unique()}@example.test`,
+          status: 'HIRED',
+          createdAt: day(1),
+          events: {
+            create: [
+              { tenantId: metricsTenant.tenant.id, type: 'APPLICATION_SUBMITTED', createdAt: day(1), metadata: { stageId: appliedStage.id, stageName: appliedStage.name } },
+              { tenantId: metricsTenant.tenant.id, type: 'STAGE_CHANGED', createdAt: day(2), metadata: { toStatus: 'OFFERED', toStageId: offeredStage.id, toStageName: offeredStage.name } },
+              { tenantId: metricsTenant.tenant.id, type: 'STAGE_CHANGED', createdAt: day(4), metadata: { toStatus: 'HIRED', toStageId: hiredStage.id, toStageName: hiredStage.name } },
+            ],
+          },
+        },
+      });
+      await prisma.application.create({
+        data: {
+          tenantId: metricsTenant.tenant.id,
+          jobId: job.body.data.id,
+          stageId: appliedStage.id,
+          candidateName: 'Legacy Candidate',
+          candidateEmail: `legacy-${unique()}@example.test`,
+          status: 'APPLIED',
+          createdAt: day(1),
+        },
+      });
+
+      const response = await t.request('GET', '/analytics/hiring', { token: metricsTenant.token });
+      expect(response.status).toBe(200);
+      expect(response.body.data.offerAcceptanceRate).toBe(50);
+      expect(response.body.data.timeToHire).toEqual({ avgDays: 3, medianDays: 3 });
+      expect(response.body.data.timePerStage).toEqual(expect.arrayContaining([
+        { stage: appliedStage.name, medianDays: 1.5 },
+        { stage: customStage.name, medianDays: 3 },
+        { stage: offeredStage.name, medianDays: 2 },
+      ]));
+      expect(response.body.data.sourceOfHire[0].applied).toBe(3);
+    });
+
     it('closed jobs stop accepting applications', async () => {
       const job = await t.request('POST', '/hiring/jobs', { token: admin.token, body: { title: 'Temp role', department: 'Ops', description: 'A short-term operations role for the season.' } });
       await t.request('PATCH', `/hiring/jobs/${job.body.data.id}`, { token: admin.token, body: { status: 'CLOSED' } });

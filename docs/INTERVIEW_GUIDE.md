@@ -8,22 +8,22 @@ points to code you can open during the interview.
 > "It's a multi-tenant HR SaaS — employees, leave, attendance, payroll with payslip PDFs,
 > documents, performance reviews, a hiring pipeline with a public careers page, Stripe billing
 > and optional AI screening. The backend is a NestJS modular monolith on Fastify with
-> PostgreSQL/Prisma and BullMQ; the frontend is React with React Query. It runs on AWS ECS
+> PostgreSQL/Prisma and RabbitMQ; the frontend is React with React Query. It runs on AWS ECS
 > Fargate behind an ALB and WAF, provisioned with Terraform, deployed by GitHub Actions with a
 > migrate-then-roll-out step.
 >
 > The part I'm proudest of is taking it from a demo to production: I audited it, found
 > critical issues — anyone could make themselves admin of any customer, tokens could be swapped
 > to read every tenant's data, the prod container couldn't even start — fixed them, and locked
-> each fix in with a regression test. It now has 79 automated tests, including a security suite
+> each fix in with a regression test. It now has 98 automated tests, including a security suite
 > that attacks the API the way I found it could be attacked."
 
 ## 2. Architecture in five sentences
 1. Modular monolith: one deployable, feature modules with controller → service → Prisma. ([ARCHITECTURE.md](ARCHITECTURE.md))
 2. Shared-schema multi-tenancy: `tenantId` on every row, taken only from the verified token.
 3. Global guard chain: rate limit → authenticate → tenant checks → roles → plan. Default deny.
-4. Slow or flaky work (email, AI) goes through Redis queues with retries.
-5. Stateless API containers behind a load balancer, so it scales horizontally; state lives in RDS, Redis and S3.
+4. Slow or flaky work (email, AI) goes through durable RabbitMQ queues with retries and dead-letter handling.
+5. Stateless API containers behind a load balancer, so it scales horizontally; state lives in RDS, Amazon MQ and S3.
 
 ## 3. Key decisions and trade-offs
 
@@ -75,7 +75,7 @@ bursts. Bottlenecks I'd watch: DB connections (Prisma `connection_limit` per tas
 rate limits (move to Redis).
 
 **How do you deploy without downtime?** Rolling ECS deploy with min healthy 100 %, readiness
-checks on DB+Redis, 30 s connection draining, circuit-breaker rollback. Migrations run first as
+checks on DB+RabbitMQ, 30 s connection draining, circuit-breaker rollback. Migrations run first as
 a separate task and must be backward compatible (expand/contract).
 
 **What happens if SES or Gemini is down?** Requests don't wait on them. Jobs retry with

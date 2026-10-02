@@ -22,7 +22,7 @@ resource "aws_secretsmanager_secret_version" "app" {
     DATABASE_URL   = "postgresql://${var.db_username}:${random_password.db.result}@${aws_db_instance.main.address}:5432/hrms?sslmode=require&connection_limit=10"
     JWT_SECRET     = random_password.jwt.result
     ENCRYPTION_KEY = random_id.encryption_key.b64_std
-    REDIS_PASSWORD = random_password.redis.result
+    RABBITMQ_URL    = replace(aws_mq_broker.main.instances[0].endpoints[0], "amqps://", "amqps://hrms:${random_password.rabbitmq.result}@")
   })
 }
 

@@ -46,6 +46,12 @@ variable "db_multi_az" {
   default     = true
 }
 
+variable "rabbitmq_instance_type" {
+  description = "Amazon MQ RabbitMQ node size; mq.m7g.large is the production baseline"
+  type        = string
+  default     = "mq.m7g.large"
+}
+
 variable "server_desired_count" {
   type    = number
   default = 2

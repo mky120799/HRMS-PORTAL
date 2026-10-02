@@ -30,7 +30,7 @@ Inputs + 2000 req/5 min/IP), HSTS, strict CSP (no third-party scripts), `X-Frame
 request ids, uniform error envelope without stack traces.
 
 **Data:** RDS encrypted, TLS forced (`rds.force_ssl`), private subnets, 14-day PITR backups,
-Multi-AZ, deletion protection. Redis with auth token + TLS + encryption at rest. S3 private,
+Multi-AZ, deletion protection. Amazon MQ RabbitMQ is private, TLS-only, authenticated, encrypted at rest, and Multi-AZ. S3 private,
 SSE, TLS-only bucket policy, versioning. Application-level AES-256-GCM for TOTP secrets and
 Slack webhooks.
 

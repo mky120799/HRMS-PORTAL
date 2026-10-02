@@ -1,154 +1,119 @@
 # Hiring module
 
-`apps/server/src/modules/hiring` · uses `ai`, `integrations/slack`, `common/storage`,
-`common/email`, `common/messaging` (RabbitMQ)
+`apps/server/src/modules/hiring` · PostgreSQL · RabbitMQ · private object storage
 
 ## Purpose
 
-End-to-end recruiting: public careers page → candidate application → configurable pipeline
-stages → AI resume screening → interview scheduling → collaborative feedback →
-assessment integrations → audit trail → recruitment analytics.
+The module covers the recruiting lifecycle from a public application through a tenant-configurable pipeline, interviews, collaborative feedback, external assessments, offer/hire decisions, an immutable timeline, and recruitment analytics. Assessment delivery and scoring stay with specialist providers; this application owns the integration boundary and normalized results.
 
----
+## Architecture
 
-## Services
-
-| Service | Responsibility |
+| Component | Responsibility |
 |---|---|
-| `HiringService` | Jobs CRUD, public careers page, apply (multipart), resume download, status updates, interview scheduling (reschedule-aware) |
-| `HiringWorkflowService` | Pipeline stages CRUD, application move, immutable event timeline |
-| `HiringFeedbackService` | Per-interviewer feedback upsert, aggregate stats (avg rating, recommendation tally) |
-| `AssessmentIntegrationService` | Assessment vendor connections, webhook HMAC verification, request lifecycle |
-| `HiringProcessor` | AI resume screening consumer (RabbitMQ, concurrency 2) + hourly interview reminder sweep |
+| `HiringService` | Jobs, careers page, application intake, authenticated resume streaming, compatibility status endpoint, AI rescreen requests |
+| `HiringWorkflowService` | Ordered stages, transition permissions, rollback rules, timeline and stage audit records |
+| `HiringInterviewService` | Atomic scheduling/rescheduling, persisted duration/location, calendar links and notification outbox entries |
+| `HiringFeedbackService` | Transactional per-interviewer feedback and aggregate scores |
+| `AssessmentIntegrationService` | Encrypted vendor configuration, assessment links, HMAC callbacks and callback idempotency |
+| `HiringOutboxService` | Creates deterministic side-effect records in the business transaction |
+| `HiringOutboxProcessor` | Leased, bounded-retry delivery to email, RabbitMQ and Slack |
+| `HiringScheduler` | Lifecycle-aware, multi-instance-safe 24-hour reminder enqueueing |
+| `HiringProcessor` | RabbitMQ consumer for advisory AI resume screening |
 
----
+## Workflow rules
 
-## Schema additions (migration 20261004)
+- Stages have a stable category (`APPLIED`, `SCREENING`, `INTERVIEW`, `OFFERED`, `HIRED`, or `REJECTED`) and a tenant-controlled order.
+- Managers may move an application forward through active stages or reject it. They cannot move backward, issue an offer, or mark a candidate hired.
+- Admins may issue offers and mark candidates hired. An admin backward move requires a non-empty `note`; the reason is stored in both `ApplicationEvent` and `AuditLog`.
+- Moves use an optimistic update so competing requests cannot silently overwrite one another.
+- Every required category must retain at least one active stage.
+- Reordering accepts the complete stage-ID list and updates every position plus its audit record atomically.
+- `PATCH /hiring/applications/:id` is retained for compatibility but uses exactly the same transition engine as the stage-specific move endpoint.
 
-| Column / Table | Purpose |
-|---|---|
-| `Application.source` | Acquisition channel — `CAREERS_SITE \| LINKEDIN \| INDEED \| REFERRAL \| OTHER` |
-| `Application.interviewReminderSentAt` | Idempotency fence — set after reminder email sent; cleared on reschedule |
-| `InterviewFeedback` | One record per reviewer per application (upsert). Stores `rating` (1–5), `recommendation` enum, `notes` |
+## Reliable side effects
 
----
+Application intake, stage changes, interview scheduling/rescheduling, timeline entries, audit rows, and their `HiringOutboxEvent` records commit together. The outbox processor:
+
+- claims records with a lease, including recovery of stale `PROCESSING` records;
+- uses deterministic event keys and tenant-scoped uniqueness;
+- retries with exponential backoff and stops after five attempts;
+- records the terminal error on `FAILED` events;
+- waits for RabbitMQ publisher confirms before completing an event.
+
+Email creation is idempotent through `Notification(tenantId, idempotencyKey)`. Email workers also use a recoverable processing lease, preventing concurrent delivery while allowing a crashed worker's message to be retried. Slack hiring failures propagate to the outbox and are retried.
+
+## Interview reminders
+
+`HiringScheduler` starts and stops with the Nest module. Every hour it looks for interviews in the next 24 hours. Competing application instances atomically claim the schedule version before creating candidate/interviewer email outbox rows and an `INTERVIEW_REMINDER_QUEUED` event. A transaction failure rolls the claim back.
+
+`interviewDurationMinutes`, `interviewLocation`, and `interviewScheduleVersion` are persisted. Rescheduling increments the version and clears `interviewReminderSentAt`, producing new deterministic reminder keys without duplicating the previous schedule's reminders. The field name is retained for compatibility, but its timestamp now means “reminder queued durably,” not “provider confirmed delivery.”
 
 ## API surface
 
-### Careers (public, no auth)
+All paths below are relative to `/api/v1`.
+
+### Careers (public)
+
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/careers/:slug` | Lists open jobs for the tenant identified by slug |
-| `POST` | `/careers/:slug/:jobId/apply` | `multipart/form-data` — name, email, consent, optional `source`, resume file |
+| `GET` | `/careers/:slug` | Open jobs for the company slug; tenant IDs are not exposed |
+| `POST` | `/careers/:slug/jobs/:jobId/apply` | Multipart name, email, consent, optional source, and PDF/DOCX resume |
 
-### Jobs (ADMIN/MANAGER, BASIC plan)
-| Method | Path |
-|---|---|
-| `GET` | `/hiring/jobs` |
-| `POST` | `/hiring/jobs` |
-| `PATCH` | `/hiring/jobs/:id` |
+### Jobs and stages (BASIC plan)
 
-### Pipeline stages (ADMIN/MANAGER)
+| Method | Path | Role |
+|---|---|---|
+| `GET` | `/hiring/jobs` | Admin, manager |
+| `POST` | `/hiring/jobs` | Admin |
+| `PATCH` | `/hiring/jobs/:id` | Admin |
+| `GET` | `/hiring/stages` | Admin, manager |
+| `POST` | `/hiring/stages` | Admin |
+| `PATCH` | `/hiring/stages/:id` | Admin |
+| `PUT` | `/hiring/stages/reorder` with `{ stageIds: string[] }` | Admin |
+
+### Applications
+
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/hiring/stages` | Auto-seeds default stages on first call |
-| `POST` | `/hiring/stages` | ADMIN only |
-| `PATCH` | `/hiring/stages/:id` | name, position, isActive — ADMIN only |
+| `GET` | `/hiring/applications` | Filters: `jobId`, `status`, `source`, pagination |
+| `PATCH` | `/hiring/applications/:id` | Admin compatibility endpoint; shared transition rules |
+| `POST` | `/hiring/applications/:id/move` | Manager/admin; rollback `note` required for admins |
+| `GET` | `/hiring/applications/:id/timeline` | Immutable application history |
+| `GET` | `/hiring/applications/:id/resume` | Authenticated private stream; never a public or signed URL |
+| `POST` | `/hiring/applications/:id/schedule-interview` | Persists start, duration, location and schedule version |
+| `POST` | `/hiring/applications/:id/rescreen` | Admin + ENTERPRISE; durable AI job publication |
+| `GET/POST/DELETE` | `/hiring/applications/:id/feedback` | Read, upsert own, or delete own feedback |
+| `GET/POST` | `/hiring/applications/:id/assessments` | List or link external assessment requests |
 
-### Applications (ADMIN/MANAGER)
+### Assessment integrations
+
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/hiring/applications` | `?jobId, status, source, page, pageSize` |
-| `PATCH` | `/hiring/applications/:id` | Status update — emails candidate |
-| `POST` | `/hiring/applications/:id/move` | Move to a specific stage |
-| `GET` | `/hiring/applications/:id/timeline` | Immutable event log |
-| `GET` | `/hiring/applications/:id/resume` | Signed stream from S3 |
-| `POST` | `/hiring/applications/:id/schedule-interview` | `isReschedule: boolean` — sends correct email template |
-| `POST` | `/hiring/applications/:id/rescreen` | ADMIN + ENTERPRISE plan — re-queues AI screening |
+| `GET/POST` | `/hiring/assessment-integrations` | Admin; secret returned only on creation |
+| `POST` | `/hiring/assessment-integrations/:id/rotate-webhook-secret` | Admin; old secret stops working |
+| `POST` | `/hiring/assessment-integrations/:id/webhook` | Public HMAC-SHA256 callback; provider event IDs are idempotent |
 
-### Interview Feedback (ADMIN/MANAGER)
-| Method | Path | Notes |
-|---|---|---|
-| `GET` | `/hiring/applications/:id/feedback` | All reviewer feedback + aggregate stats |
-| `POST` | `/hiring/applications/:id/feedback` | Upsert own feedback (one record per reviewer) |
-| `DELETE` | `/hiring/applications/:id/feedback` | Remove own feedback |
+## Timeline and analytics
 
-### Assessment Integrations (ADMIN)
-| Method | Path | Notes |
-|---|---|---|
-| `GET` | `/hiring/assessment-integrations` | |
-| `POST` | `/hiring/assessment-integrations` | Generates webhook secret — returned once, stored encrypted |
-| `POST` | `/hiring/assessment-integrations/:id/rotate-webhook-secret` | Issues new secret |
-| `GET` | `/hiring/applications/:id/assessments` | |
-| `POST` | `/hiring/applications/:id/assessments` | |
+The timeline includes application submission, stage changes and rollbacks, interview scheduling/rescheduling and reminder enqueueing, feedback submission/update/deletion, assessment results, and AI screening completion/skip.
 
-### Vendor webhook (public, HMAC-verified)
-| Method | Path |
-|---|---|
-| `POST` | `/hiring/webhooks/assessment/:integrationId` |
+`GET /analytics/hiring` (BUSINESS plan) reports source of hire, time to hire, median time per stage, and offer acceptance. Stage durations begin at `APPLICATION_SUBMITTED` and use actual stage-entry events, including custom stages. Offer acceptance uses the cohort that entered `OFFERED`, so a later rejection remains in the denominator. Legacy applications without trustworthy submission/transition history remain in count metrics but are deliberately excluded from duration and offer-cohort calculations.
 
-### Analytics (`GET /analytics/hiring`, ADMIN/MANAGER, BUSINESS plan)
-Returns a single parallel query batch:
-- **Source of hire** — applied + hired counts per `source` value
-- **Time to hire** — avg and median days from `createdAt` to first `HIRED` event
-- **Time per stage** — median days in each stage (derived from `ApplicationEvent` timestamps via `LEAD()` window)
-- **Offer acceptance rate** — `HIRED / (OFFERED + HIRED)`
+## Migration and backfill
 
----
+Migration `20261005000000_hiring_full_hardening` adds the outbox, notification idempotency/lease fields, and persisted interview metadata. It creates missing canonical stages for every existing tenant and assigns a stage matching each legacy application's current status. It does **not** fabricate historical `ApplicationEvent` rows or timestamps.
 
-## Background jobs (HiringProcessor)
+## Frontend and optional integrations
 
-### AI screening
-- Triggered by `HIRING_QUEUE` RabbitMQ message on every new application.
-- Extracts resume text → `AiService.screenResume()` → writes `aiScore`, `aiReason`, `aiScoredAt`.
-- Concurrency 2, 3 attempts, 60 s retry delay. Skips if text < 100 chars.
-- Score is **advisory only** — never used to auto-reject.
+- Hiring settings supports stage creation, activation, and atomic ordered-list reordering, plus assessment integration creation and secret rotation.
+- Hiring screens support private resume download, interview scheduling/rescheduling, source and AI indicators, and structured feedback.
+- Recruitment KPIs are shown in analytics.
+- Job-board publishing/import and automatic video-meeting creation are optional future integrations. Location/video links remain user supplied today.
 
-### Interview reminder sweep
-- Runs **every hour** (`setInterval` after 30 s warm-up).
-- Finds `status=INTERVIEW` applications with `interviewAt` within the next 24 h and `interviewReminderSentAt IS NULL`.
-- Sends `interviewReminder` email to candidate and (if set) the interviewer.
-- Marks `interviewReminderSentAt` via `updateMany` for idempotency (handles concurrent pods).
-- Logs `INTERVIEW_REMINDER_SENT` to the application event timeline.
+## Security and operations
 
----
-
-## Email templates (all HTML-escaped)
-
-| Template | Trigger |
-|---|---|
-| `applicationReceived` | On apply |
-| `applicationStatus` | On status change |
-| `interviewScheduled` | New interview |
-| `interviewRescheduled` | `isReschedule: true` on schedule endpoint |
-| `interviewReminder` | ~24 h before interview (processor sweep) |
-
----
-
-## Frontend
-
-### `/hiring`
-- Job creation form (ADMIN), jobs grid with open/close toggle.
-- Candidates table: name, role, **source badge**, AI score (colour-coded), stage selector, resume download, interview/reschedule button, feedback button.
-- **Schedule dialog** — detects existing `interviewAt` and shows reschedule warning banner; sends correct email variant.
-- **Feedback dialog** — shows all reviewer cards (stars, recommendation chip, expandable notes) and submit-my-own-feedback form.
-
-### Settings → Hiring (`/settings`, ADMIN)
-Powered by `HiringSettingsPanel`:
-- Assessment integrations list — add, rotate secret (shown once with copy button), active badge.
-- Pipeline stages list — up/down reorder, toggle active/inactive, add stage dialog.
-
-### Analytics → Recruitment KPIs (`/analytics`)
-- Stat cards: avg time-to-hire, offer acceptance rate, total applicants / hired.
-- Source of hire horizontal bar chart.
-- Median days per stage horizontal bar chart.
-
----
-
-## Security notes
-
-- Public careers pages use the tenant's **slug**, not `tenantId`, to prevent enumeration.
-- Resume files are stored in S3 under a private key; download requires a valid session token.
-- Webhook callbacks are verified using **HMAC-SHA256** against the per-integration secret (stored AES-256-GCM encrypted).
-- AI screening is strictly advisory — no automated rejection path exists in the codebase.
-- All sensitive mutations write to the audit log.
+- Every business query is tenant scoped; public careers lookup uses the tenant slug.
+- Resume objects stay private and are streamed only after role and tenant authorization.
+- Assessment webhook secrets are encrypted at rest and callbacks use exact raw-body HMAC verification.
+- AI scores are advisory and never auto-reject a candidate.
+- Monitor `HiringOutboxEvent.status = 'FAILED'`, RabbitMQ queue depth, retry queues, dead-letter queues, connection health, and oldest pending outbox age. Alert on any failed event or sustained pending age.

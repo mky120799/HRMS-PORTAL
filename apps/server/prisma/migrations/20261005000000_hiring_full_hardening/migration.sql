@@ -5,7 +5,16 @@ ALTER TABLE "Application"
   ADD COLUMN "interviewLocation" TEXT,
   ADD COLUMN "interviewScheduleVersion" INTEGER NOT NULL DEFAULT 0;
 
-ALTER TABLE "Notification" ADD COLUMN "idempotencyKey" TEXT;
+-- The previous reminder migration used a partial index that Prisma cannot
+-- represent. Replace it with the declared full index so schema drift checks
+-- remain deterministic across clean and upgraded databases.
+DROP INDEX IF EXISTS "Application_tenantId_interviewAt_idx";
+CREATE INDEX "Application_tenantId_interviewAt_idx"
+  ON "Application"("tenantId", "interviewAt");
+
+ALTER TABLE "Notification"
+  ADD COLUMN "idempotencyKey" TEXT,
+  ADD COLUMN "processingAt" TIMESTAMP(3);
 CREATE UNIQUE INDEX "Notification_tenantId_idempotencyKey_key"
   ON "Notification"("tenantId", "idempotencyKey");
 

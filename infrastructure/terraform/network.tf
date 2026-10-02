@@ -146,13 +146,13 @@ resource "aws_security_group" "db" {
   }
 }
 
-resource "aws_security_group" "redis" {
-  name        = "${local.name}-redis"
-  description = "Redis from app tasks only"
+resource "aws_security_group" "rabbitmq" {
+  name        = "${local.name}-rabbitmq"
+  description = "RabbitMQ TLS from app tasks only"
   vpc_id      = aws_vpc.main.id
   ingress {
-    from_port       = 6379
-    to_port         = 6379
+    from_port       = 5671
+    to_port         = 5671
     protocol        = "tcp"
     security_groups = [aws_security_group.app.id]
   }

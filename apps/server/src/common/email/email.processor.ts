@@ -22,19 +22,44 @@ export class EmailProcessor implements OnModuleInit {
     config: ConfigService,
   ) {
     this.from = config.get('EMAIL_FROM', 'HRMS <noreply@example.com>');
-    if (config.get('EMAIL_DRIVER') === 'ses') this.ses = new SESClient({ region: config.get('AWS_REGION') });
+    if (config.get('EMAIL_DRIVER') === 'ses')
+      this.ses = new SESClient({ region: config.get('AWS_REGION') });
   }
 
   async onModuleInit() {
-    await this.rabbit.consume<EmailJob>(EMAIL_QUEUE, (message) => this.process(message.payload, message.attempt), { concurrency: 5, attempts: 5, retryDelayMs: 30_000 });
+    await this.rabbit.consume<EmailJob>(
+      EMAIL_QUEUE,
+      (message) => this.process(message.payload, message.attempt),
+      { concurrency: 5, attempts: 5, retryDelayMs: 30_000 },
+    );
   }
 
-  async process({ notificationId, to, subject, html, text }: EmailJob, attempt: number): Promise<void> {
+  async process(
+    { notificationId, to, subject, html, text }: EmailJob,
+    attempt: number,
+  ): Promise<void> {
+    const now = new Date();
+    const staleLease = new Date(now.getTime() - 5 * 60_000);
     const claimed = await this.prisma.notification.updateMany({
-      where: { id: notificationId, status: { in: ['QUEUED', 'FAILED'] } },
-      data: { status: 'PROCESSING' },
+      where: {
+        id: notificationId,
+        OR: [
+          { status: 'QUEUED' },
+          { status: 'PROCESSING', processingAt: { lt: staleLease } },
+        ],
+      },
+      data: { status: 'PROCESSING', processingAt: now },
     });
-    if (!claimed.count) return;
+    if (!claimed.count) {
+      const existing = await this.prisma.notification.findUnique({
+        where: { id: notificationId },
+        select: { status: true },
+      });
+      if (!existing || existing.status === 'SENT') return;
+      throw new Error(
+        `Email notification ${notificationId} is already being processed`,
+      );
+    }
     try {
       if (this.ses) {
         await this.ses.send(
@@ -43,20 +68,44 @@ export class EmailProcessor implements OnModuleInit {
             Destination: { ToAddresses: [to] },
             Message: {
               Subject: { Data: subject, Charset: 'UTF-8' },
-              Body: { Html: { Data: html, Charset: 'UTF-8' }, Text: { Data: text, Charset: 'UTF-8' } },
+              Body: {
+                Html: { Data: html, Charset: 'UTF-8' },
+                Text: { Data: text, Charset: 'UTF-8' },
+              },
             },
           }),
         );
       } else {
-        this.logger.log(`[email:log-driver] to=${to} subject="${subject}"\n${text}`);
+        this.logger.log(
+          `[email:log-driver] to=${to} subject="${subject}"\n${text}`,
+        );
       }
-      await this.prisma.notification.update({ where: { id: notificationId }, data: { status: 'SENT', sentAt: new Date(), error: null } });
-    } catch (err: any) {
-      this.logger.warn(`Email ${notificationId} attempt ${attempt + 1} failed: ${err.message}`);
+      await this.prisma.notification.update({
+        where: { id: notificationId },
+        data: {
+          status: 'SENT',
+          sentAt: new Date(),
+          processingAt: null,
+          error: null,
+        },
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const terminal = attempt + 1 >= 5;
+      this.logger.warn(
+        `Email ${notificationId} attempt ${attempt + 1} failed: ${message}`,
+      );
       await this.prisma.notification
-        .update({ where: { id: notificationId }, data: { status: 'QUEUED', error: String(err.message).slice(0, 500) } })
+        .update({
+          where: { id: notificationId },
+          data: {
+            status: terminal ? 'FAILED' : 'QUEUED',
+            processingAt: null,
+            error: message.slice(0, 500),
+          },
+        })
         .catch(() => undefined);
-      throw err;
+      throw error;
     }
   }
 }

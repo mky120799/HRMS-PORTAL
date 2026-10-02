@@ -27,20 +27,13 @@ Returns, in a single parallel batch of aggregate queries:
 * The raw SQL uses Prisma's tagged template so values are parameterised (no injection risk).
 * `today` is resolved to the tenant's configured timezone before comparing with date-only fields.
 
-## Known gaps / roadmap
+## Recruitment analytics
 
-The following hiring-specific metrics are **not yet implemented** (tracked in
-[`HIRING_ROADMAP.md`](HIRING_ROADMAP.md#h2)):
-
-| Metric | Missing because |
-|---|---|
-| Source of hire | No `source` field on `Application` yet |
-| Time-to-hire (avg / median days) | No aggregation query; needs stage-event timestamps |
-| Time per stage | Needs median of `ApplicationEvent` timestamp deltas per stage |
-| Offer acceptance rate | `OFFERED → HIRED` conversion not computed |
-
-A dedicated `GET /analytics/hiring` endpoint is planned once the `source` field and
-stage-event timestamp queries are added.
+`GET /analytics/hiring` returns source of hire, average/median time to hire, median duration
+per custom stage, and offer acceptance. Durations use actual stage-entry events beginning at
+`APPLICATION_SUBMITTED`; legacy rows without trustworthy history remain in counts but are
+excluded from duration metrics. Offer acceptance uses the historical offered cohort rather
+than current status, so later rejection does not erase an offer.
 
 ## Future notes
 

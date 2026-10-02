@@ -181,7 +181,10 @@ export class AnalyticsService {
         hired: Number(r.hired),
       })),
       timeToHire: {
-        avgDays: timeToHireRows[0]?.avg_days ?? null,
+        avgDays:
+          timeToHireRows[0]?.avg_days == null
+            ? null
+            : Number(timeToHireRows[0].avg_days),
         medianDays: timeToHireRows[0]?.median_days ? Math.round(Number(timeToHireRows[0].median_days) * 10) / 10 : null,
       },
       timePerStage: timePerStageRows.map((r) => ({

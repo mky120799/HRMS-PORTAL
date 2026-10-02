@@ -11,7 +11,7 @@ pipeline used by every module.
 ```mermaid
 flowchart LR
   S[Any service] -->|EmailService.send| N[(Notification row<br/>status QUEUED)]
-  S --> Q[email queue]
+  S --> Q[RabbitMQ hrms.email]
   Q --> W[EmailProcessor]
   W -->|SES SendEmail| X[Recipient]
   W -->|SENT / FAILED + error| N
@@ -20,9 +20,11 @@ flowchart LR
 * Templates (`templates.ts`) **escape every interpolated value** and include a plain-text part.
 * 5 attempts with exponential backoff; the Notification row shows the real outcome (the
   original marked failed sends as SENT).
-* `sensitive: true` (invites, resets) stores a **redacted** body and completed jobs are removed
-  from Redis, so credential links can't be read back later. (The original stored reset links
+* `sensitive: true` (invites, resets) stores a **redacted** body, so credential links can't be
+  read back from the notification log later. (The original stored reset links
   in a table every employee could list — an account-takeover path.)
+* Tenant-scoped idempotency keys prevent duplicate notification records. A five-minute processing
+  lease blocks concurrent sends while allowing a crashed worker's RabbitMQ redelivery to recover.
 * `EMAIL_DRIVER=log` prints emails in development; production requires `ses`.
 
 ## Endpoints

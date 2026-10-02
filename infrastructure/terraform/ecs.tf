@@ -60,14 +60,11 @@ locals {
     { name = "AWS_S3_BUCKET_NAME", value = aws_s3_bucket.files.bucket },
     { name = "EMAIL_DRIVER", value = "ses" },
     { name = "EMAIL_FROM", value = "HRMS <noreply@${var.email_domain}>" },
-    { name = "REDIS_HOST", value = aws_elasticache_replication_group.main.primary_endpoint_address },
-    { name = "REDIS_PORT", value = "6379" },
-    { name = "REDIS_TLS", value = "true" },
     { name = "GOOGLE_CALLBACK_URL", value = "https://${var.domain_name}/api/v1/auth/google/callback" },
   ]
 
   server_secrets = concat(
-    [for k in ["DATABASE_URL", "JWT_SECRET", "ENCRYPTION_KEY", "REDIS_PASSWORD"] : { name = k, valueFrom = "${local.app_secret}:${k}::" }],
+    [for k in ["DATABASE_URL", "JWT_SECRET", "ENCRYPTION_KEY", "RABBITMQ_URL"] : { name = k, valueFrom = "${local.app_secret}:${k}::" }],
     [for k in ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_BASIC", "STRIPE_PRICE_BUSINESS", "STRIPE_PRICE_ENTERPRISE", "GEMINI_API_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "SENTRY_DSN"] :
     { name = k, valueFrom = "${local.int_secret}:${k}::" }],
   )
@@ -94,6 +91,7 @@ resource "aws_ecs_task_definition" "server" {
     cpu_architecture        = "X86_64"
     operating_system_family = "LINUX"
   }
+  depends_on = [aws_secretsmanager_secret_version.app, aws_secretsmanager_secret_version.integrations]
   container_definitions = jsonencode([{
     name             = "server"
     image            = "${aws_ecr_repository.server.repository_url}:${var.image_tag}"
@@ -122,6 +120,7 @@ resource "aws_ecs_task_definition" "migrate" {
   memory                   = 512
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
+  depends_on               = [aws_secretsmanager_secret_version.app]
   container_definitions = jsonencode([{
     name             = "migrate"
     image            = "${aws_ecr_repository.server.repository_url}:${var.image_tag}"

@@ -35,6 +35,11 @@ locals {
       dims      = { DBInstanceIdentifier = aws_db_instance.main.identifier }
       desc      = "Database free storage below 2 GB"
     }
+    rabbitmq-backlog = {
+      namespace = "AWS/AmazonMQ", metric = "MessageReadyCount", stat = "Maximum", threshold = 100, op = "GreaterThanThreshold"
+      dims      = { Broker = aws_mq_broker.main.broker_name }
+      desc      = "RabbitMQ has more than 100 messages waiting for consumers"
+    }
   }
 }
 
