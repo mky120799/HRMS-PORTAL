@@ -15,8 +15,8 @@ The module covers the recruiting lifecycle from a public application through a t
 | `HiringInterviewService` | Atomic scheduling/rescheduling, persisted duration/location, calendar links and notification outbox entries |
 | `HiringFeedbackService` | Transactional per-interviewer feedback and aggregate scores |
 | `AssessmentIntegrationService` | Encrypted vendor configuration, assessment links, HMAC callbacks and callback idempotency |
-| `HiringOutboxService` | Creates deterministic side-effect records in the business transaction |
-| `HiringOutboxProcessor` | Leased, bounded-retry delivery to email, RabbitMQ and Slack |
+| `HiringOutboxService` | Routes email through the shared notification platform and creates deterministic queue/Slack side effects |
+| `HiringOutboxProcessor` | Leased, bounded-retry delivery for RabbitMQ, Slack and pre-migration email rows |
 | `HiringScheduler` | Lifecycle-aware, multi-instance-safe 24-hour reminder enqueueing |
 | `HiringProcessor` | RabbitMQ consumer for advisory AI resume screening |
 
@@ -32,7 +32,7 @@ The module covers the recruiting lifecycle from a public application through a t
 
 ## Reliable side effects
 
-Application intake, stage changes, interview scheduling/rescheduling, timeline entries, audit rows, and their `HiringOutboxEvent` records commit together. The outbox processor:
+Application intake, stage changes, interview scheduling/rescheduling, timeline entries, audit rows, and their durable side effects commit together. Hiring email now creates shared `NotificationEvent`, channel records and `NotificationOutboxEvent` rows in that transaction. Hiring-specific RabbitMQ jobs and Slack work remain in `HiringOutboxEvent`. The hiring outbox processor:
 
 - claims records with a lease, including recovery of stale `PROCESSING` records;
 - uses deterministic event keys and tenant-scoped uniqueness;
@@ -40,11 +40,11 @@ Application intake, stage changes, interview scheduling/rescheduling, timeline e
 - records the terminal error on `FAILED` events;
 - waits for RabbitMQ publisher confirms before completing an event.
 
-Email creation is idempotent through `Notification(tenantId, idempotencyKey)`. Email workers also use a recoverable processing lease, preventing concurrent delivery while allowing a crashed worker's message to be retried. Slack hiring failures propagate to the outbox and are retried.
+Email creation is idempotent through `Notification(tenantId, idempotencyKey)`. Authenticated interviewers receive an in-app item as well as email, subject to their notification preferences; external candidates receive email only. Email workers use a recoverable processing lease, preventing concurrent delivery while allowing a crashed worker's message to be retried. Slack hiring failures propagate to the hiring outbox and are retried.
 
 ## Interview reminders
 
-`HiringScheduler` starts and stops with the Nest module. Every hour it looks for interviews in the next 24 hours. Competing application instances atomically claim the schedule version before creating candidate/interviewer email outbox rows and an `INTERVIEW_REMINDER_QUEUED` event. A transaction failure rolls the claim back.
+`HiringScheduler` starts and stops with the Nest module. Every hour it looks for interviews in the next 24 hours. Competing application instances atomically claim the schedule version before creating candidate/interviewer notification-platform outbox rows and an `INTERVIEW_REMINDER_QUEUED` event. A transaction failure rolls the claim back.
 
 `interviewDurationMinutes`, `interviewLocation`, and `interviewScheduleVersion` are persisted. Rescheduling increments the version and clears `interviewReminderSentAt`, producing new deterministic reminder keys without duplicating the previous schedule's reminders. The field name is retained for compatibility, but its timestamp now means “reminder queued durably,” not “provider confirmed delivery.”
 

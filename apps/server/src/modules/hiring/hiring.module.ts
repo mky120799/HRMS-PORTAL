@@ -11,9 +11,10 @@ import { HiringScheduler } from './hiring.scheduler';
 import { HiringInterviewService } from './hiring-interview.service';
 import { AiModule } from '../ai/ai.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [AiModule, IntegrationsModule],
+  imports: [AiModule, IntegrationsModule, NotificationsModule],
   controllers: [CareersController, HiringController, AssessmentWebhookController],
   providers: [
     HiringService,

@@ -64,8 +64,8 @@ export class HiringInterviewService {
         data: { tenantId: user.tenantId, applicationId, actorUserId: user.userId, type: eventType, metadata: { startsAt: start.toISOString(), durationMinutes: dto.durationMinutes, interviewerEmail: interviewer.email, location: dto.location ?? null, interviewScheduleVersion: version } },
       });
       await tx.auditLog.create({ data: { tenantId: user.tenantId, userId: user.userId, action: eventType, resource: 'hiring', resourceId: applicationId, newValues: { startsAt: start.toISOString(), durationMinutes: dto.durationMinutes, interviewerEmail: interviewer.email, location: dto.location ?? null } } });
-      await this.outbox.enqueueEmail(tx, { tenantId: user.tenantId, applicationId, eventKey: `${eventType.toLowerCase()}:${event.id}:candidate`, to: application.candidateEmail, email: template({ ...common, recipientName: application.candidateName }) });
-      await this.outbox.enqueueEmail(tx, { tenantId: user.tenantId, applicationId, eventKey: `${eventType.toLowerCase()}:${event.id}:interviewer`, to: interviewer.email, recipientUserId: interviewer.id, email: template({ ...common, recipientName: interviewer.name }) });
+      await this.outbox.enqueueEmail(tx, { tenantId: user.tenantId, applicationId, eventKey: `${eventType.toLowerCase()}:${event.id}:candidate`, eventType, to: application.candidateEmail, email: template({ ...common, recipientName: application.candidateName }) });
+      await this.outbox.enqueueEmail(tx, { tenantId: user.tenantId, applicationId, eventKey: `${eventType.toLowerCase()}:${event.id}:interviewer`, eventType, to: interviewer.email, recipientUserId: interviewer.id, email: template({ ...common, recipientName: interviewer.name }) });
       return tx.application.findUniqueOrThrow({ where: { id: applicationId }, include: { job: { select: { id: true, title: true, department: true } }, stage: true } });
     });
     return { ...updated, calendarUrl };

@@ -76,6 +76,7 @@ export class HiringScheduler implements OnModuleInit, OnModuleDestroy {
           tenantId: application.tenantId,
           applicationId: application.id,
           eventKey: `${eventPrefix}:candidate`,
+          eventType: 'INTERVIEW_REMINDER',
           to: application.candidateEmail,
           email: EmailTemplates.interviewReminder({ ...common, recipientName: application.candidateName }),
         });
@@ -84,6 +85,7 @@ export class HiringScheduler implements OnModuleInit, OnModuleDestroy {
             tenantId: application.tenantId,
             applicationId: application.id,
             eventKey: `${eventPrefix}:interviewer`,
+            eventType: 'INTERVIEW_REMINDER',
             to: interviewer.email,
             recipientUserId: interviewer.id,
             email: EmailTemplates.interviewReminder({ ...common, recipientName: interviewer.name }),

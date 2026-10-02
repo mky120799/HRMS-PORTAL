@@ -60,6 +60,16 @@ type NotificationCampaign = {
   processedRecipients: number;
   failedRecipients: number;
 };
+type NotificationOperations = {
+  deliveries: Array<{
+    channel: string;
+    status: string;
+    _count: { _all: number };
+  }>;
+  outbox: Array<{ status: string; _count: { _all: number } }>;
+  campaigns: Array<{ status: string; _count: { _all: number } }>;
+  recentFailures: Array<{ id: string }>;
+};
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
   SENT: <CheckCircle2 size={14} className="text-emerald-500" />,
@@ -111,6 +121,14 @@ export function NotificationsPage() {
       (await api.get<NotificationCampaign[]>("/notifications/campaigns")).data,
     enabled: isAdmin,
     refetchInterval: 10_000,
+  });
+
+  const operations = useQuery({
+    queryKey: ["notifications", "operations"],
+    queryFn: async () =>
+      (await api.get<NotificationOperations>("/notifications/operations")).data,
+    enabled: isAdmin,
+    refetchInterval: 15_000,
   });
 
   const send = useMutation({
@@ -201,6 +219,14 @@ export function NotificationsPage() {
         preference.eventType === "*" && preference.channel === channel,
     )?.enabled ?? true;
 
+  const deliveryCount = (channel: string, status: string) =>
+    operations.data?.deliveries.find(
+      (item) => item.channel === channel && item.status === status,
+    )?._count._all ?? 0;
+  const outboxCount = (status: string) =>
+    operations.data?.outbox.find((item) => item.status === status)?._count
+      ._all ?? 0;
+
   return (
     <div className="space-y-6">
       <div>
@@ -241,6 +267,30 @@ export function NotificationsPage() {
           ))}
         </CardContent>
       </Card>
+
+      {isAdmin && (
+        <Card className="bg-white/50 backdrop-blur-xl">
+          <CardHeader>
+            <CardTitle>Delivery health</CardTitle>
+            <CardDescription>
+              Current tenant delivery and durable outbox state.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Queued email", deliveryCount("EMAIL", "QUEUED")],
+              ["Failed email", deliveryCount("EMAIL", "FAILED")],
+              ["Pending outbox", outboxCount("PENDING")],
+              ["Failed outbox", outboxCount("FAILED")],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-lg border bg-white/40 p-3">
+                <div className="text-xs text-muted-foreground">{label}</div>
+                <div className="mt-1 text-2xl font-semibold">{value}</div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <div className={`grid gap-6 ${isAdmin ? "lg:grid-cols-5" : ""}`}>
         {isAdmin && (

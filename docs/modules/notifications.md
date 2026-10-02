@@ -49,6 +49,7 @@ PostgreSQL and is retried later.
 | `NotificationOutboxProcessor`   | Leases committed outbox rows and publishes them to RabbitMQ with bounded retries.                         |
 | `NotificationCampaignProcessor` | Expands due campaigns in batches and creates ordinary per-recipient notification events.                  |
 | `NotificationOperationsService` | Reports tenant delivery health and safely requeues failed platform email.                                 |
+| `NotificationRetentionService`  | Removes old final notification records on a schedule while preserving pending, failed and unread work.    |
 | `RabbitMqService`               | Durable queue declaration, publisher confirms, consumer acknowledgements, retries and dead-letter queues. |
 | `EmailProcessor`                | Claims queued email records and sends them through SES, or logs them in development.                      |
 | `NotificationsService`          | Inbox queries, read/archive operations, preferences and guarded admin communication.                      |
@@ -120,6 +121,40 @@ of 100. Each recipient becomes an ordinary `COMPANY_ANNOUNCEMENT` event, so
 preferences, idempotency and the email outbox work exactly as they do for leave
 events. Failed recipient expansion is retried up to five times. A campaign can
 be cancelled while it is still `SCHEDULED`.
+
+## Retention
+
+Notification cleanup is lifecycle-aware and runs inside the application. It
+uses a PostgreSQL advisory lock, so multiple server instances can run without
+all of them deleting the same records at once.
+
+Default retention:
+
+- user-visible notification history: 365 days;
+- completed notification outbox rows: 30 days;
+- cleanup interval: 24 hours.
+
+The cleanup intentionally deletes only final, non-actionable records:
+
+- completed outbox rows older than the completed-outbox retention window;
+- sent email log rows older than the history retention window;
+- read or archived in-app notifications older than the history retention
+  window;
+- completed or cancelled campaign records after their recipients are removed;
+- orphaned notification events with no remaining channel or outbox records.
+
+Unread in-app notifications, queued or processing email, failed email, pending
+outbox rows and failed campaign recipient rows are preserved. Those records
+represent user-visible work or operational problems that should be handled
+before removal.
+
+Retention can be changed with:
+
+```bash
+NOTIFICATION_HISTORY_RETENTION_DAYS=365
+NOTIFICATION_COMPLETED_OUTBOX_RETENTION_DAYS=30
+NOTIFICATION_RETENTION_CLEANUP_INTERVAL_HOURS=24
+```
 
 ## Leave-decision example
 
@@ -210,14 +245,16 @@ Implemented in the platform path:
 - Immediate and scheduled announcement campaigns
 - Audience snapshots, batch fan-out, progress and pre-send cancellation
 - Administrator delivery-health summary and safe failed-email retry
+- Web delivery-health cards for queued/failed email and outbox work
 - Transactional leave approval reminders and escalations
 - Transactional account invitations and password-reset requests
 - Encrypted-at-rest credential email payloads with post-delivery cleanup
+- Hiring candidate emails plus interviewer email/in-app notifications
+- Scheduled retention cleanup for old final records
 
 Still to be migrated or added:
 
-- Move hiring, payroll and attendance notifications onto
-  `NotificationPublisherService`
+- Add payroll and attendance notification events as those workflows are exposed
 - Quiet hours and daily/weekly digests
 - Real-time inbox updates using Server-Sent Events
 - Versioned and tenant-customizable templates

@@ -40,6 +40,7 @@ Status as of **2026-10-02**. See [`hiring.md`](hiring.md) for current behavior a
 - Transactional application events, audit data and durable side effects.
 - Leased hiring outbox with bounded retry, failure state and RabbitMQ publisher confirms.
 - Tenant-scoped email idempotency and recoverable email delivery claims.
+- Shared notification events/outbox for candidate email and interviewer email/in-app delivery, with user preference enforcement.
 - Feedback deletion and AI screening completion/skip timeline events.
 - Existing-tenant default stages and current-stage backfill without synthetic history.
 - PostgreSQL/RabbitMQ CI services, unit reliability coverage, and hiring E2E coverage.

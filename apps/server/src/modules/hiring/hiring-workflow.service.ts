@@ -388,6 +388,7 @@ export class HiringWorkflowService {
             tenantId: user.tenantId,
             applicationId,
             eventKey: `application-status:${timelineEvent.id}`,
+            eventType: 'APPLICATION_STATUS_CHANGED',
             to: application.candidateEmail,
             email: EmailTemplates.applicationStatus({
               candidateName: application.candidateName,

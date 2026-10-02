@@ -96,6 +96,7 @@ export class HiringService {
           tenantId: job.tenantId,
           applicationId: created.id,
           eventKey: `application-received:${created.id}`,
+          eventType: 'APPLICATION_RECEIVED',
           to: parsed.data.candidateEmail,
           email: EmailTemplates.applicationReceived({ candidateName: parsed.data.candidateName, jobTitle: job.title, companyName: job.tenant.name }),
         });

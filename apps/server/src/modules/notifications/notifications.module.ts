@@ -5,6 +5,7 @@ import { NotificationPublisherService } from './notification-publisher.service';
 import { NotificationOutboxProcessor } from './notification-outbox.processor';
 import { NotificationCampaignProcessor } from './notification-campaign.processor';
 import { NotificationOperationsService } from './notification-operations.service';
+import { NotificationRetentionService } from './notification-retention.service';
 
 @Module({
   controllers: [NotificationsController],
@@ -14,6 +15,7 @@ import { NotificationOperationsService } from './notification-operations.service
     NotificationOutboxProcessor,
     NotificationCampaignProcessor,
     NotificationOperationsService,
+    NotificationRetentionService,
   ],
   exports: [NotificationPublisherService],
 })
