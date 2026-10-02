@@ -62,10 +62,20 @@ export class EmailProcessor implements OnModuleInit {
     }
     try {
       if (this.ses) {
+        const current = await this.prisma.notification.findUnique({
+          where: { id: notificationId },
+          select: { tenantId: true },
+        });
         await this.ses.send(
           new SendEmailCommand({
             Source: this.from,
             Destination: { ToAddresses: [to] },
+            Tags: [
+              { Name: 'notificationId', Value: notificationId },
+              ...(current?.tenantId
+                ? [{ Name: 'tenantId', Value: current.tenantId }]
+                : []),
+            ],
             Message: {
               Subject: { Data: subject, Charset: 'UTF-8' },
               Body: {

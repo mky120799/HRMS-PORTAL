@@ -14,8 +14,10 @@ import type { AuthUser } from '../../common/auth/auth-user';
 import { paginate, paged } from '../../common/validation/common.schemas';
 import type {
   ComposeEmailDto,
+  CreateNotificationTemplateDto,
   CreateNotificationCampaignDto,
   ListNotificationsQuery,
+  UpdateNotificationSettingsDto,
   UpdateNotificationPreferenceDto,
 } from './dto/notification.dto';
 import { NotificationPublisherService } from './notification-publisher.service';
@@ -178,6 +180,153 @@ export class NotificationsService {
     });
   }
 
+  async deliverySettings(user: AuthUser) {
+    const existing = await this.prisma.notificationDeliverySetting.findUnique({
+      where: {
+        tenantId_userId: { tenantId: user.tenantId, userId: user.userId },
+      },
+    });
+    if (existing) return existing;
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: user.tenantId },
+      select: { timezone: true },
+    });
+    return this.prisma.notificationDeliverySetting.create({
+      data: {
+        tenantId: user.tenantId,
+        userId: user.userId,
+        timezone: tenant.timezone,
+      },
+    });
+  }
+
+  async updateDeliverySettings(
+    user: AuthUser,
+    dto: UpdateNotificationSettingsDto,
+  ) {
+    if (dto.timezone) this.assertTimezone(dto.timezone);
+    if (
+      dto.quietHoursEnabled &&
+      (dto.quietStartMinutes == null || dto.quietEndMinutes == null)
+    ) {
+      throw new BadRequestException(
+        'Quiet hours require start and end minutes',
+      );
+    }
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: user.tenantId },
+      select: { timezone: true },
+    });
+    return this.prisma.notificationDeliverySetting.upsert({
+      where: {
+        tenantId_userId: { tenantId: user.tenantId, userId: user.userId },
+      },
+      update: dto,
+      create: {
+        tenantId: user.tenantId,
+        userId: user.userId,
+        timezone: dto.timezone ?? tenant.timezone,
+        quietHoursEnabled: dto.quietHoursEnabled ?? false,
+        quietStartMinutes: dto.quietStartMinutes,
+        quietEndMinutes: dto.quietEndMinutes,
+        digestFrequency: dto.digestFrequency ?? 'IMMEDIATE',
+        digestHour: dto.digestHour ?? 9,
+        digestDayOfWeek: dto.digestDayOfWeek ?? 1,
+      },
+    });
+  }
+
+  suppressions(user: AuthUser) {
+    return this.prisma.notificationSuppression.findMany({
+      where: { tenantId: user.tenantId, active: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+  }
+
+  templates(user: AuthUser) {
+    return this.prisma.notificationTemplate.findMany({
+      where: { tenantId: user.tenantId },
+      orderBy: [
+        { eventType: 'asc' },
+        { channel: 'asc' },
+        { version: 'desc' },
+      ],
+      take: 200,
+    });
+  }
+
+  async createTemplate(user: AuthUser, dto: CreateNotificationTemplateDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const latest = await tx.notificationTemplate.findFirst({
+        where: {
+          tenantId: user.tenantId,
+          eventType: dto.eventType,
+          channel: dto.channel,
+        },
+        orderBy: { version: 'desc' },
+        select: { version: true },
+      });
+      const version = (latest?.version ?? 0) + 1;
+      if (dto.isActive) {
+        await tx.notificationTemplate.updateMany({
+          where: {
+            tenantId: user.tenantId,
+            eventType: dto.eventType,
+            channel: dto.channel,
+            isActive: true,
+          },
+          data: { isActive: false },
+        });
+      }
+      return tx.notificationTemplate.create({
+        data: {
+          tenantId: user.tenantId,
+          createdByUserId: user.userId,
+          eventType: dto.eventType,
+          channel: dto.channel,
+          version,
+          subjectTemplate: dto.subjectTemplate,
+          htmlTemplate: dto.htmlTemplate,
+          textTemplate: dto.textTemplate,
+          isActive: dto.isActive,
+        },
+      });
+    });
+  }
+
+  async activateTemplate(user: AuthUser, id: string) {
+    const template = await this.prisma.notificationTemplate.findFirst({
+      where: { id, tenantId: user.tenantId },
+    });
+    if (!template) throw new NotFoundException('Template not found');
+    await this.prisma.$transaction([
+      this.prisma.notificationTemplate.updateMany({
+        where: {
+          tenantId: user.tenantId,
+          eventType: template.eventType,
+          channel: template.channel,
+          isActive: true,
+        },
+        data: { isActive: false },
+      }),
+      this.prisma.notificationTemplate.update({
+        where: { id },
+        data: { isActive: true },
+      }),
+    ]);
+    return { active: true };
+  }
+
+  async unsuppress(user: AuthUser, id: string) {
+    const result = await this.prisma.notificationSuppression.updateMany({
+      where: { id, tenantId: user.tenantId },
+      data: { active: false },
+    });
+    if (!result.count) throw new NotFoundException('Suppression not found');
+    return { active: false };
+  }
+
   async composeEmail(user: AuthUser, dto: ComposeEmailDto) {
     const recipient = await this.prisma.employee.findFirst({
       where: {
@@ -317,5 +466,13 @@ export class NotificationsService {
     });
     if (!exists) throw new NotFoundException('Campaign not found');
     throw new ConflictException('Only a scheduled campaign can be cancelled');
+  }
+
+  private assertTimezone(timezone: string) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+    } catch {
+      throw new BadRequestException('Invalid timezone');
+    }
   }
 }

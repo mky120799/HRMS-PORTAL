@@ -48,8 +48,11 @@ PostgreSQL and is retried later.
 | `NotificationPublisherService`  | Writes the event, channel records and outbox work inside a caller-provided Prisma transaction.            |
 | `NotificationOutboxProcessor`   | Leases committed outbox rows and publishes them to RabbitMQ with bounded retries.                         |
 | `NotificationCampaignProcessor` | Expands due campaigns in batches and creates ordinary per-recipient notification events.                  |
+| `NotificationDigestProcessor`   | Sends held daily/weekly digest items as one durable email per user.                                       |
 | `NotificationOperationsService` | Reports tenant delivery health and safely requeues failed platform email.                                 |
 | `NotificationRetentionService`  | Removes old final notification records on a schedule while preserving pending, failed and unread work.    |
+| `NotificationEmailWebhookService` | Verifies signed email-provider callbacks, updates delivery state and manages suppressions.              |
+| `NotificationRealtimeService`   | Streams authenticated inbox-change events to the web app over Server-Sent Events.                         |
 | `RabbitMqService`               | Durable queue declaration, publisher confirms, consumer acknowledgements, retries and dead-letter queues. |
 | `EmailProcessor`                | Claims queued email records and sends them through SES, or logs them in development.                      |
 | `NotificationsService`          | Inbox queries, read/archive operations, preferences and guarded admin communication.                      |
@@ -108,6 +111,43 @@ A per-user opt-in or opt-out for an event type and channel. Missing preferences
 mean enabled. A specific event preference overrides the wildcard (`*`)
 preference. Mandatory security or compliance notifications will ignore
 opt-outs when published with `mandatory: true`.
+
+### `NotificationDeliverySetting`
+
+Per-user timing rules for enabled email:
+
+- timezone;
+- optional quiet-hours window;
+- digest frequency: `IMMEDIATE`, `DAILY` or `WEEKLY`;
+- digest hour and weekly digest day.
+
+Quiet hours delay optional individual email by setting the outbox
+`availableAt`. Daily and weekly digest settings hold optional email in
+`NotificationDigestItem` rows. In-app notifications are still created
+immediately.
+
+### Suppressions and provider webhooks
+
+`NotificationSuppression` stores active email suppressions caused by bounces,
+complaints or manual action. Optional email is not queued for an active
+suppressed address. Mandatory security/compliance notifications may bypass
+suppression only when the publisher explicitly marks them mandatory.
+
+`POST /notifications/email/webhook` accepts signed SES delivery events. The
+request body is verified with `EMAIL_WEBHOOK_SECRET` using the
+`x-hrms-signature` HMAC header. Delivery events move email logs to
+`DELIVERED`; bounces, complaints and rejects move them to `BOUNCED`,
+`COMPLAINED` or `REJECTED`. Bounce and complaint callbacks also create or
+reactivate suppression rows.
+
+### `NotificationTemplate`
+
+Tenant administrators can create versioned email templates per event type.
+Only one template version is active for a `(tenantId, eventType, channel)` at a
+time. When an active template exists, the publisher renders it with variables
+such as `{{title}}`, `{{body}}`, `{{link}}`, `{{companyName}}`, `{{eventType}}`
+and keys from the event `data` payload. If no tenant template exists, the code
+template remains the fallback.
 
 ### `NotificationCampaign` and recipients
 
@@ -187,12 +227,15 @@ would send a false notification. The outbox prevents that failure mode.
 | ------------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /notifications`                       | Authenticated    | `mine` returns the user's in-app inbox; administrator `all` returns the tenant delivery log. Supports `category` and `unread`. |
 | `GET /notifications/unread-count`          | Authenticated    | Lightweight count for the navigation badge.                                                                                    |
+| `SSE /notifications/stream`                | Authenticated    | Server-Sent Events stream for inbox changes.                                                                                    |
 | `PUT /notifications/:id/read`              | Recipient        | Marks one in-app notification read.                                                                                            |
 | `POST /notifications/:id/read`             | Recipient        | Backward-compatible form of the same operation.                                                                                |
 | `PUT /notifications/read-all`              | Recipient        | Marks every visible in-app notification read.                                                                                  |
 | `PUT /notifications/:id/archive`           | Recipient        | Reads and removes an in-app item from the normal inbox.                                                                        |
 | `GET /notifications/preferences`           | Authenticated    | Returns the current user's explicit preferences.                                                                               |
 | `PUT /notifications/preferences`           | Authenticated    | Upserts one event/channel preference.                                                                                          |
+| `GET /notifications/settings`              | Authenticated    | Returns the current user's quiet-hour and digest settings.                                                                      |
+| `PUT /notifications/settings`              | Authenticated    | Updates quiet-hour and digest settings.                                                                                        |
 | `POST /notifications/compose-email`        | ADMIN, 30/minute | Sends only to an active member of the same tenant.                                                                             |
 | `POST /notifications/announce`             | ADMIN, 5/hour    | Compatibility endpoint that creates an immediate or scheduled campaign for up to 1,000 recipients.                             |
 | `POST /notifications/campaigns`            | ADMIN, 20/hour   | Creates an immediate or scheduled announcement and snapshots its audience.                                                     |
@@ -201,6 +244,12 @@ would send a false notification. The outbox prevents that failure mode.
 | `POST /notifications/campaigns/:id/cancel` | ADMIN            | Cancels a campaign that has not started processing.                                                                            |
 | `GET /notifications/operations`            | ADMIN            | Returns grouped delivery, outbox and campaign health plus recent failures.                                                     |
 | `POST /notifications/deliveries/:id/retry` | ADMIN            | Safely requeues a failed platform email using its preserved outbox payload.                                                    |
+| `GET /notifications/suppressions`          | ADMIN            | Lists active bounce/complaint/manual suppressions.                                                                             |
+| `POST /notifications/suppressions/:id/unsuppress` | ADMIN     | Deactivates a suppression after administrator review.                                                                           |
+| `GET /notifications/templates`             | ADMIN            | Lists tenant email template versions.                                                                                          |
+| `POST /notifications/templates`            | ADMIN            | Creates a new template version, optionally active immediately.                                                                  |
+| `POST /notifications/templates/:id/activate` | ADMIN          | Activates a previous template version and deactivates the prior active version.                                                 |
+| `POST /notifications/email/webhook`        | Public HMAC      | SES delivery/bounce/complaint callback endpoint.                                                                               |
 
 ## Email pipeline
 
@@ -218,6 +267,10 @@ NotificationOutboxProcessor
 - Deterministic notification keys make duplicate queue delivery harmless.
 - Credential-bearing emails use `sensitive: true` on the legacy email API so
   their stored body is redacted.
+- SES messages are tagged with `tenantId` and `notificationId` so provider
+  callbacks can update the exact delivery row.
+- `SENT` means SES accepted the message; `DELIVERED`, `BOUNCED`,
+  `COMPLAINED` and `REJECTED` come from signed webhook callbacks.
 
 ## Security rules
 
@@ -230,6 +283,8 @@ NotificationOutboxProcessor
   handlers are removed; links are restricted to HTTPS and `mailto`.
 - Raw provider credentials and credential-bearing links are not written to
   application logs.
+- SES callback requests require an HMAC signature and are idempotent by
+  provider event id.
 
 ## Current scope and next work
 
@@ -251,15 +306,19 @@ Implemented in the platform path:
 - Encrypted-at-rest credential email payloads with post-delivery cleanup
 - Hiring candidate emails plus interviewer email/in-app notifications
 - Scheduled retention cleanup for old final records
+- Quiet hours for optional email
+- Daily and weekly digest email
+- SES delivery/bounce/complaint webhook handling
+- Bounce/complaint suppression list with administrator recovery
+- Payroll payslip-ready notifications
+- Attendance half-day and missing-clock-out notifications
+- Operations alerts for stuck outbox, failed campaigns/digests and suppressions
+- Server-Sent Events stream for inbox refresh
+- Versioned tenant email templates with active-version rollback
 
 Still to be migrated or added:
 
-- Add payroll and attendance notification events as those workflows are exposed
-- Quiet hours and daily/weekly digests
-- Real-time inbox updates using Server-Sent Events
-- Versioned and tenant-customizable templates
-- SES delivery, bounce and complaint webhooks
-- Suppression lists and expanded provider monitoring
+- Expanded provider monitoring dashboards
 
 These items are intentionally listed as current work rather than described as
 already available.
@@ -270,6 +329,8 @@ already available.
 - RabbitMQ must be available at `RABBITMQ_URL`.
 - `EMAIL_DRIVER=log` prints the email instead of contacting SES.
 - Production configuration requires `EMAIL_DRIVER=ses`.
+- `EMAIL_WEBHOOK_SECRET` signs SES event callbacks with
+  `x-hrms-signature: sha256=<hex>`.
 
 Apply the Prisma migration before starting the updated server:
 

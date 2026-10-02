@@ -4,6 +4,10 @@
 
 ## Purpose
 Monthly salary structures, payroll runs with a draft → finalize lifecycle, and payslip PDFs.
+Finalizing payroll now publishes a transactional `PAYSLIP_READY` notification
+for each finalized employee payslip. Employees receive an in-app item and email
+through the notification outbox, subject to their notification preferences,
+quiet hours, digest settings and suppression rules.
 
 ## Data
 * `SalaryStructure` (monthly): `baseSalary`, `allowances`, `deductions` (other fixed, e.g.

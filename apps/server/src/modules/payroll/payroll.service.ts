@@ -1,9 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Payslip, Prisma } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import type { AuthUser } from '../../common/auth/auth-user';
+import { EmailTemplates } from '../../common/email/templates';
 import { countWorkingDays, daysInMonth, monthRange, overlap, toDateOnly } from '../../common/utils/dates';
+import { NotificationPublisherService } from '../notifications/notification-publisher.service';
 import { calculatePayslip } from './payroll.calculator';
 import { renderPayslipPdf } from './payslip-pdf';
 import type { UpsertSalaryDto } from './dto/payroll.dto';
@@ -35,6 +38,8 @@ export class PayrollService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationPublisherService,
+    private readonly config: ConfigService,
   ) {}
 
   // ─── Salary structures ──────────────────────────────────────────────────────
@@ -163,9 +168,55 @@ export class PayrollService {
   }
 
   async finalize(user: AuthUser, year: number, month: number) {
-    const result = await this.prisma.payslip.updateMany({
-      where: { tenantId: user.tenantId, year, month, status: 'DRAFT' },
-      data: { status: 'FINALIZED', finalizedAt: new Date() },
+    const finalizedAt = new Date();
+    const result = await this.prisma.$transaction(async (tx) => {
+      const drafts = await tx.payslip.findMany({
+        where: { tenantId: user.tenantId, year, month, status: 'DRAFT' },
+        include: {
+          employee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              userId: true,
+            },
+          },
+          tenant: { select: { name: true } },
+        },
+      });
+      if (!drafts.length) return { count: 0 };
+      const update = await tx.payslip.updateMany({
+        where: { id: { in: drafts.map((payslip) => payslip.id) } },
+        data: { status: 'FINALIZED', finalizedAt },
+      });
+      const frontendUrl = this.config.get('FRONTEND_URL', 'http://localhost:5173');
+      for (const payslip of drafts) {
+        const employeeName = `${payslip.employee.firstName} ${payslip.employee.lastName}`.trim();
+        await this.notifications.publish(tx, {
+          tenantId: user.tenantId,
+          eventKey: `payslip-ready:${payslip.id}`,
+          eventType: 'PAYSLIP_READY',
+          category: 'PAYROLL',
+          actorUserId: user.userId,
+          data: { payslipId: payslip.id, year, month },
+          recipients: [
+            { userId: payslip.employee.userId, email: payslip.employee.email },
+          ],
+          channels: ['IN_APP', 'EMAIL'],
+          title: 'Payslip ready',
+          body: `Your payslip for ${month}/${year} is ready.`,
+          link: '/attendance',
+          email: EmailTemplates.payslipReady({
+            name: employeeName,
+            companyName: payslip.tenant.name,
+            month,
+            year,
+            link: `${frontendUrl}/attendance`,
+          }),
+        });
+      }
+      return update;
     });
     if (result.count === 0) throw new BadRequestException('There are no draft payslips to finalize for this month');
     await this.audit.log({ tenantId: user.tenantId, userId: user.userId, action: 'PAYROLL_FINALIZED', resource: 'payroll', newValues: { year, month, count: result.count } });

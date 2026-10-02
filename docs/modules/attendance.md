@@ -4,6 +4,11 @@
 
 ## Purpose
 Self-service clock-in/out and daily rosters for managers and admins.
+Attendance publishes `ATTENDANCE_HALF_DAY` and
+`ATTENDANCE_MISSING_CLOCK_OUT` events through the central notification
+platform. Employees receive in-app and email updates through the durable
+notification outbox, subject to preferences, quiet hours, digest settings and
+suppression rules.
 
 ## Data
 `AttendanceRecord(tenantId, employeeId, date, clockIn, clockOut, workMinutes, status)` with a
@@ -23,6 +28,9 @@ unique `(employeeId, date)`. `date` is the calendar date **in the tenant's timez
   00:30 IST is recorded on the correct day even though servers run in UTC.
 * **Double clock-in is impossible even under concurrency**: the unique index rejects the second
   insert; the Prisma P2002 error is translated to 409 (no check-then-insert race).
+* **Missing clock-out reminders are idempotent.** The scheduler uses the
+  attendance record id as the notification event key, so repeated scheduler
+  runs do not create duplicate logical reminders.
 * The employee is always the caller (`user.employeeId` from the token). The original code used
   an undefined id, which matched *the first employee in the tenant* — everyone clocked in as the
   same person.

@@ -6,6 +6,9 @@ import { NotificationOutboxProcessor } from './notification-outbox.processor';
 import { NotificationCampaignProcessor } from './notification-campaign.processor';
 import { NotificationOperationsService } from './notification-operations.service';
 import { NotificationRetentionService } from './notification-retention.service';
+import { NotificationDigestProcessor } from './notification-digest.processor';
+import { NotificationEmailWebhookService } from './notification-email-webhook.service';
+import { NotificationRealtimeService } from './notification-realtime.service';
 
 @Module({
   controllers: [NotificationsController],
@@ -14,8 +17,11 @@ import { NotificationRetentionService } from './notification-retention.service';
     NotificationPublisherService,
     NotificationOutboxProcessor,
     NotificationCampaignProcessor,
+    NotificationDigestProcessor,
     NotificationOperationsService,
     NotificationRetentionService,
+    NotificationEmailWebhookService,
+    NotificationRealtimeService,
   ],
   exports: [NotificationPublisherService],
 })

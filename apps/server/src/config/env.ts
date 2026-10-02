@@ -44,6 +44,11 @@ export const envSchema = z
     // Email. EMAIL_DRIVER=log only writes emails to the log (development).
     EMAIL_DRIVER: z.enum(['ses', 'log']).default('log'),
     EMAIL_FROM: z.string().default('HRMS <noreply@example.com>'),
+    EMAIL_WEBHOOK_SECRET: optionalString,
+
+    NOTIFICATION_HISTORY_RETENTION_DAYS: z.coerce.number().int().positive().default(365),
+    NOTIFICATION_COMPLETED_OUTBOX_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    NOTIFICATION_RETENTION_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().positive().default(24),
 
     GEMINI_API_KEY: optionalString,
     GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
@@ -72,6 +77,7 @@ export const envSchema = z
     if (env.EMAIL_DRIVER !== 'ses') {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['EMAIL_DRIVER'], message: 'must be "ses" in production' });
     }
+    require('EMAIL_WEBHOOK_SECRET', 'required for SES delivery/bounce/complaint callbacks');
     if (env.FRONTEND_URL.startsWith('http://')) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['FRONTEND_URL'], message: 'must use https in production' });
     }

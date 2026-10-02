@@ -1,9 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuthUser } from '../../common/auth/auth-user';
 import type { TenantSnapshot } from '../../common/tenant/tenant-context.service';
+import { EmailTemplates } from '../../common/email/templates';
 import { parseDateOnly, todayIn, toDateOnly } from '../../common/utils/dates';
+import { NotificationPublisherService } from '../notifications/notification-publisher.service';
 
 const HALF_DAY_MINUTES = 4 * 60;
 
@@ -14,7 +17,11 @@ const HALF_DAY_MINUTES = 4 * 60;
  */
 @Injectable()
 export class AttendanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationPublisherService,
+    private readonly config: ConfigService,
+  ) {}
 
   private employeeIdOf(user: AuthUser): string {
     if (!user.employeeId) throw new BadRequestException('Your account is not linked to an employee profile');
@@ -44,9 +51,44 @@ export class AttendanceService {
 
     const clockOut = new Date();
     const workMinutes = Math.round((clockOut.getTime() - record.clockIn.getTime()) / 60_000);
-    return this.prisma.attendanceRecord.update({
-      where: { id: record.id },
-      data: { clockOut, workMinutes, status: workMinutes < HALF_DAY_MINUTES ? 'HALF_DAY' : 'PRESENT' },
+    const status = workMinutes < HALF_DAY_MINUTES ? 'HALF_DAY' : 'PRESENT';
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.attendanceRecord.update({
+        where: { id: record.id },
+        data: { clockOut, workMinutes, status },
+      });
+      if (status === 'HALF_DAY') {
+        const employee = await tx.employee.findUniqueOrThrow({
+          where: { id: employeeId },
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+            userId: true,
+          },
+        });
+        const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
+        const frontendUrl = this.config.get('FRONTEND_URL', 'http://localhost:5173');
+        await this.notifications.publish(tx, {
+          tenantId: user.tenantId,
+          eventKey: `attendance-half-day:${record.id}`,
+          eventType: 'ATTENDANCE_HALF_DAY',
+          category: 'ATTENDANCE',
+          data: { attendanceRecordId: record.id, date: toDateOnly(date), workMinutes },
+          recipients: [{ userId: employee.userId, email: employee.email }],
+          channels: ['IN_APP', 'EMAIL'],
+          title: 'Attendance marked half-day',
+          body: `Your attendance for ${toDateOnly(date)} was marked half-day.`,
+          link: '/attendance',
+          email: EmailTemplates.attendanceReminder({
+            name: employeeName,
+            date: toDateOnly(date),
+            kind: 'HALF_DAY',
+            link: `${frontendUrl}/attendance`,
+          }),
+        });
+      }
+      return updated;
     });
   }
 

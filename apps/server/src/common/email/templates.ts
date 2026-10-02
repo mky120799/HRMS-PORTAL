@@ -220,6 +220,65 @@ export const EmailTemplates = {
     );
   },
 
+  payslipReady: (p: {
+    name: string;
+    companyName: string;
+    month: number;
+    year: number;
+    link: string;
+  }) =>
+    build(
+      `Your payslip is ready for ${p.month}/${p.year}`,
+      'Payslip ready',
+      [
+        `Hi ${escapeHtml(p.name)},`,
+        `${escapeHtml(p.companyName)} has finalized payroll for ${escapeHtml(p.month)}/${escapeHtml(p.year)}. Your payslip is now available in HRMS.`,
+      ],
+      { label: 'View payslip', url: p.link },
+    ),
+
+  attendanceReminder: (p: {
+    name: string;
+    date: string;
+    kind: 'MISSING_CLOCK_OUT' | 'HALF_DAY';
+    link: string;
+  }) => {
+    const halfDay = p.kind === 'HALF_DAY';
+    return build(
+      halfDay ? 'Attendance marked half-day' : 'Clock-out reminder',
+      halfDay ? 'Attendance update' : 'Clock-out reminder',
+      [
+        `Hi ${escapeHtml(p.name)},`,
+        halfDay
+          ? `Your attendance for ${escapeHtml(p.date)} was marked as half-day based on recorded working time.`
+          : `You have a clock-in record for ${escapeHtml(p.date)} without a clock-out. Please update it if this was missed.`,
+      ],
+      { label: 'Open attendance', url: p.link },
+    );
+  },
+
+  notificationDigest: (p: {
+    companyName: string;
+    items: Array<{ title: string; body: string; link?: string | null }>;
+  }) => {
+    const rows = p.items.map(
+      (item) =>
+        `<li style="margin:0 0 12px"><strong>${escapeHtml(item.title)}</strong><br/>${escapeHtml(item.body)}${
+          item.link
+            ? `<br/><a href="${escapeHtml(item.link)}">${escapeHtml(item.link)}</a>`
+            : ''
+        }</li>`,
+    );
+    return build(
+      `Your ${p.companyName} notification digest`,
+      'Notification digest',
+      [
+        `Here are ${escapeHtml(p.items.length)} recent update(s) from ${escapeHtml(p.companyName)}:`,
+        `<ul style="padding-left:20px;margin:0">${rows.join('')}</ul>`,
+      ],
+    );
+  },
+
   /** Admin-composed message. `safeHtml` must already be sanitised (see NotificationsService). */
   announcement: (p: {
     subject: string;

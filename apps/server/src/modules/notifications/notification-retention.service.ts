@@ -111,6 +111,16 @@ export class NotificationRetentionService
             },
           },
         });
+      const oldDigestItems = await this.prisma.notificationDigestItem.deleteMany({
+        where: {
+          createdAt: { lt: historyCutoff },
+          status: { in: ['SENT', 'FAILED'] },
+        },
+      });
+      const oldWebhookEvents =
+        await this.prisma.notificationWebhookEvent.deleteMany({
+          where: { receivedAt: { lt: historyCutoff } },
+        });
 
       const oldCampaigns = await this.prisma.notificationCampaign.deleteMany({
         where: {
@@ -132,6 +142,8 @@ export class NotificationRetentionService
         completedOutbox.count +
         oldNotifications.count +
         oldCampaignRecipients.count +
+        oldDigestItems.count +
+        oldWebhookEvents.count +
         oldCampaigns.count +
         orphanedEvents.count;
       if (deleted > 0) {
@@ -139,6 +151,7 @@ export class NotificationRetentionService
           `Notification retention deleted ${deleted} old records ` +
             `(outbox=${completedOutbox.count}, notifications=${oldNotifications.count}, ` +
             `campaignRecipients=${oldCampaignRecipients.count}, campaigns=${oldCampaigns.count}, ` +
+            `digestItems=${oldDigestItems.count}, webhookEvents=${oldWebhookEvents.count}, ` +
             `events=${orphanedEvents.count})`,
         );
       }

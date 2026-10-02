@@ -70,6 +70,11 @@ model Tenant {
   notificationEvents             NotificationEvent[]
   notificationOutboxEvents       NotificationOutboxEvent[]
   notificationPreferences        NotificationPreference[]
+  notificationDeliverySettings   NotificationDeliverySetting[]
+  notificationDigestItems        NotificationDigestItem[]
+  notificationSuppressions       NotificationSuppression[]
+  notificationWebhookEvents      NotificationWebhookEvent[]
+  notificationTemplates          NotificationTemplate[]
   notificationCampaigns          NotificationCampaign[]
   notificationCampaignRecipients NotificationCampaignRecipient[]
   attendance                     AttendanceRecord[]
@@ -551,7 +556,7 @@ model Notification {
   channel         String // EMAIL, IN_APP
   title           String
   body            String // credential-bearing emails are stored redacted
-  status          String    @default("PENDING") // PENDING, QUEUED, PROCESSING, SENT, FAILED, READ
+  status          String    @default("PENDING") // PENDING, QUEUED, PROCESSING, SENT, DELIVERED, FAILED, READ, SUPPRESSED, BOUNCED, COMPLAINED, REJECTED
   recipientUserId String?
   recipientEmail  String?
   subject         String?
@@ -639,6 +644,118 @@ model NotificationPreference {
 
   @@unique([tenantId, userId, eventType, channel])
   @@index([tenantId, userId])
+}
+
+/// Per-user delivery controls that affect email timing. Preferences still decide
+/// whether a channel is enabled; this model decides when enabled email is sent.
+model NotificationDeliverySetting {
+  id                String    @id @default(uuid())
+  tenantId          String
+  userId            String
+  timezone          String    @default("UTC")
+  quietHoursEnabled Boolean   @default(false)
+  quietStartMinutes Int?
+  quietEndMinutes   Int?
+  digestFrequency   String    @default("IMMEDIATE") // IMMEDIATE, DAILY, WEEKLY
+  digestHour        Int       @default(9)
+  digestDayOfWeek   Int       @default(1) // 0 Sunday ... 6 Saturday
+  lastDigestSentAt  DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, userId])
+}
+
+/// Email work held for a daily or weekly digest instead of being delivered as an
+/// individual message. Digest rows are created transactionally with the source
+/// notification event and are idempotent on `(tenantId, digestKey)`.
+model NotificationDigestItem {
+  id             String    @id @default(uuid())
+  tenantId       String
+  userId         String
+  email          String
+  digestKey      String
+  eventType      String
+  category       String    @default("GENERAL")
+  title          String
+  body           String
+  link           String?
+  status         String    @default("PENDING") // PENDING, QUEUED, SENT, FAILED
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now())
+  lockedAt       DateTime?
+  notificationId String?
+  error          String?
+  createdAt      DateTime  @default(now())
+  processedAt    DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, digestKey])
+  @@index([tenantId, userId, status, availableAt])
+  @@index([status, availableAt])
+}
+
+/// Stops optional email to addresses that bounced or complained. Mandatory
+/// security/compliance mail may still bypass this when explicitly published.
+model NotificationSuppression {
+  id         String    @id @default(uuid())
+  tenantId   String
+  email      String
+  reason     String // BOUNCE, COMPLAINT, MANUAL
+  source     String    @default("SES")
+  active     Boolean   @default(true)
+  count      Int       @default(1)
+  lastEventAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, email])
+  @@index([tenantId, active, reason])
+}
+
+/// Idempotency fence for email provider callbacks. Raw provider payloads are not
+/// stored; the event id/type and normalized outcome are enough for replay safety.
+model NotificationWebhookEvent {
+  id             String   @id
+  tenantId       String?
+  notificationId String?
+  email          String?
+  provider       String   @default("SES")
+  eventType      String
+  status         String
+  receivedAt     DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, receivedAt])
+  @@index([notificationId])
+}
+
+/// Tenant-customizable email template versions. If an active template exists
+/// for `(tenantId, eventType, channel)`, it overrides the code default.
+model NotificationTemplate {
+  id              String   @id @default(uuid())
+  tenantId        String
+  eventType       String
+  channel         String   @default("EMAIL")
+  version         Int
+  subjectTemplate String
+  htmlTemplate    String
+  textTemplate    String
+  isActive        Boolean  @default(false)
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, eventType, channel, version])
+  @@index([tenantId, eventType, channel, isActive])
 }
 
 /// An administrator announcement. Audience membership is snapshotted into

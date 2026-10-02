@@ -2,27 +2,43 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
   Query,
+  Req,
+  Sse,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import type { MessageEvent } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
+import type { FastifyRequest } from 'fastify';
 import { NotificationsService } from './notifications.service';
 import { NotificationOperationsService } from './notification-operations.service';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { NotificationEmailWebhookService } from './notification-email-webhook.service';
+import { NotificationRealtimeService } from './notification-realtime.service';
+import type { Observable } from 'rxjs';
+import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   composeEmailSchema,
   createNotificationCampaignSchema,
+  createNotificationTemplateSchema,
+  emailWebhookSchema,
   listNotificationsSchema,
+  updateNotificationSettingsSchema,
   updateNotificationPreferenceSchema,
   type ComposeEmailDto,
   type CreateNotificationCampaignDto,
+  type CreateNotificationTemplateDto,
+  type EmailWebhookDto,
   type ListNotificationsQuery,
+  type UpdateNotificationSettingsDto,
   type UpdateNotificationPreferenceDto,
 } from './dto/notification.dto';
 
@@ -33,6 +49,8 @@ export class NotificationsController {
   constructor(
     private readonly notifications: NotificationsService,
     private readonly operations: NotificationOperationsService,
+    private readonly emailWebhook: NotificationEmailWebhookService,
+    private readonly realtime: NotificationRealtimeService,
   ) {}
 
   @Get()
@@ -49,6 +67,11 @@ export class NotificationsController {
     return this.notifications.unreadCount(user);
   }
 
+  @Sse('stream')
+  stream(@CurrentUser() user: AuthUser): Observable<MessageEvent> {
+    return this.realtime.stream(user);
+  }
+
   @Get('preferences')
   preferences(@CurrentUser() user: AuthUser) {
     return this.notifications.listPreferences(user);
@@ -61,6 +84,20 @@ export class NotificationsController {
     dto: UpdateNotificationPreferenceDto,
   ) {
     return this.notifications.updatePreference(user, dto);
+  }
+
+  @Get('settings')
+  settings(@CurrentUser() user: AuthUser) {
+    return this.notifications.deliverySettings(user);
+  }
+
+  @Put('settings')
+  updateSettings(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(updateNotificationSettingsSchema))
+    dto: UpdateNotificationSettingsDto,
+  ) {
+    return this.notifications.updateDeliverySettings(user, dto);
   }
 
   @Put('read-all')
@@ -107,6 +144,46 @@ export class NotificationsController {
   @Roles('ADMIN')
   operationsOverview(@CurrentUser() user: AuthUser) {
     return this.operations.overview(user.tenantId);
+  }
+
+  @Get('suppressions')
+  @Roles('ADMIN')
+  suppressions(@CurrentUser() user: AuthUser) {
+    return this.notifications.suppressions(user);
+  }
+
+  @Get('templates')
+  @Roles('ADMIN')
+  templates(@CurrentUser() user: AuthUser) {
+    return this.notifications.templates(user);
+  }
+
+  @Post('templates')
+  @Roles('ADMIN')
+  createTemplate(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(createNotificationTemplateSchema))
+    dto: CreateNotificationTemplateDto,
+  ) {
+    return this.notifications.createTemplate(user, dto);
+  }
+
+  @Post('templates/:id/activate')
+  @Roles('ADMIN')
+  activateTemplate(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.notifications.activateTemplate(user, id);
+  }
+
+  @Post('suppressions/:id/unsuppress')
+  @Roles('ADMIN')
+  unsuppress(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.notifications.unsuppress(user, id);
   }
 
   @Post('deliveries/:id/retry')
@@ -162,5 +239,18 @@ export class NotificationsController {
     dto: CreateNotificationCampaignDto,
   ) {
     return this.notifications.announce(user, dto);
+  }
+
+  @Public()
+  @SkipThrottle()
+  @Post('email/webhook')
+  @HttpCode(200)
+  @ApiExcludeEndpoint()
+  webhook(
+    @Headers('x-hrms-signature') signature: string | undefined,
+    @Req() req: RawBodyRequest<FastifyRequest>,
+    @Body(new ZodValidationPipe(emailWebhookSchema)) dto: EmailWebhookDto,
+  ) {
+    return this.emailWebhook.handle(signature, req.rawBody, dto);
   }
 }
