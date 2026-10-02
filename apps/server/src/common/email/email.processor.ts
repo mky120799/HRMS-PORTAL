@@ -80,7 +80,7 @@ export class EmailProcessor implements OnModuleInit {
           `[email:log-driver] to=${to} subject="${subject}"\n${text}`,
         );
       }
-      await this.prisma.notification.update({
+      const delivered = await this.prisma.notification.update({
         where: { id: notificationId },
         data: {
           status: 'SENT',
@@ -88,7 +88,27 @@ export class EmailProcessor implements OnModuleInit {
           processingAt: null,
           error: null,
         },
+        select: { tenantId: true, idempotencyKey: true },
       });
+      if (delivered?.idempotencyKey) {
+        await this.prisma.notificationOutboxEvent
+          .updateMany({
+            where: {
+              tenantId: delivered.tenantId,
+              eventKey: delivered.idempotencyKey,
+            },
+            data: { encryptedPayload: null },
+          })
+          .catch((cleanupError: unknown) => {
+            const cleanupMessage =
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : String(cleanupError);
+            this.logger.warn(
+              `Email ${notificationId} was sent but encrypted payload cleanup failed: ${cleanupMessage}`,
+            );
+          });
+      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       const terminal = attempt + 1 >= 5;

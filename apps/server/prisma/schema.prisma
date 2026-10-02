@@ -48,33 +48,35 @@ model Tenant {
   subscriptionPlan      SubscriptionPlan   @default(FREE)
   trialEndsAt           DateTime?
 
-  users              User[]
-  employees          Employee[]
-  jobs               Job[]
-  applications       Application[]
-  hiringStages       HiringStage[]
-  applicationEvents  ApplicationEvent[]
-  interviewFeedback  InterviewFeedback[]
-  hiringOutboxEvents HiringOutboxEvent[]
-  assessmentIntegrations AssessmentIntegration[]
-  assessmentRequests AssessmentRequest[]
-  leaves             LeaveRequest[]
-  leaveBalanceLedger LeaveBalanceLedger[]
-  leavePolicies      LeavePolicy[]
-  leavePolicyVersions LeavePolicyVersion[]
-  leaveApprovalRules LeaveApprovalRule[]
-  leaveApprovalDelegations LeaveApprovalDelegation[]
-  leaveApprovalFollowUps LeaveApprovalFollowUp[]
-  holidays           Holiday[]
-  notifications      Notification[]
-  notificationEvents NotificationEvent[]
-  notificationOutboxEvents NotificationOutboxEvent[]
-  notificationPreferences NotificationPreference[]
-  attendance         AttendanceRecord[]
-  salaryStructures   SalaryStructure[]
-  payslips           Payslip[]
-  documents          Document[]
-  performanceReviews PerformanceReview[]
+  users                          User[]
+  employees                      Employee[]
+  jobs                           Job[]
+  applications                   Application[]
+  hiringStages                   HiringStage[]
+  applicationEvents              ApplicationEvent[]
+  interviewFeedback              InterviewFeedback[]
+  hiringOutboxEvents             HiringOutboxEvent[]
+  assessmentIntegrations         AssessmentIntegration[]
+  assessmentRequests             AssessmentRequest[]
+  leaves                         LeaveRequest[]
+  leaveBalanceLedger             LeaveBalanceLedger[]
+  leavePolicies                  LeavePolicy[]
+  leavePolicyVersions            LeavePolicyVersion[]
+  leaveApprovalRules             LeaveApprovalRule[]
+  leaveApprovalDelegations       LeaveApprovalDelegation[]
+  leaveApprovalFollowUps         LeaveApprovalFollowUp[]
+  holidays                       Holiday[]
+  notifications                  Notification[]
+  notificationEvents             NotificationEvent[]
+  notificationOutboxEvents       NotificationOutboxEvent[]
+  notificationPreferences        NotificationPreference[]
+  notificationCampaigns          NotificationCampaign[]
+  notificationCampaignRecipients NotificationCampaignRecipient[]
+  attendance                     AttendanceRecord[]
+  salaryStructures               SalaryStructure[]
+  payslips                       Payslip[]
+  documents                      Document[]
+  performanceReviews             PerformanceReview[]
 }
 
 model User {
@@ -96,12 +98,12 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  employee Employee?
-  applicationEvents  ApplicationEvent[]   @relation("ApplicationEventActor")
-  interviewFeedback  InterviewFeedback[]
-  delegatedApprovals     LeaveApprovalDelegation[] @relation("Delegate")
-  approvalDelegations    LeaveApprovalDelegation[] @relation("Delegator")
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id])
+  employee            Employee?
+  applicationEvents   ApplicationEvent[]        @relation("ApplicationEventActor")
+  interviewFeedback   InterviewFeedback[]
+  delegatedApprovals  LeaveApprovalDelegation[] @relation("Delegate")
+  approvalDelegations LeaveApprovalDelegation[] @relation("Delegator")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -128,18 +130,18 @@ model Employee {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant             Tenant              @relation(fields: [tenantId], references: [id])
-  user               User?               @relation(fields: [userId], references: [id])
-  manager            Employee?           @relation("Reports", fields: [managerId], references: [id])
-  reports            Employee[]          @relation("Reports")
+  tenant             Tenant               @relation(fields: [tenantId], references: [id])
+  user               User?                @relation(fields: [userId], references: [id])
+  manager            Employee?            @relation("Reports", fields: [managerId], references: [id])
+  reports            Employee[]           @relation("Reports")
   leaves             LeaveRequest[]
   leaveBalanceLedger LeaveBalanceLedger[]
   attendance         AttendanceRecord[]
   salaryStructure    SalaryStructure?
   payslips           Payslip[]
   documents          Document[]
-  performanceReviews PerformanceReview[] @relation("EmployeeReviews")
-  managerReviews     PerformanceReview[] @relation("ManagerReviews")
+  performanceReviews PerformanceReview[]  @relation("EmployeeReviews")
+  managerReviews     PerformanceReview[]  @relation("ManagerReviews")
 
   @@unique([tenantId, email])
   @@unique([tenantId, employeeCode])
@@ -149,20 +151,20 @@ model Employee {
 }
 
 model LeavePolicy {
-  id          String   @id @default(uuid())
-  tenantId    String
-  type        String // ANNUAL, SICK, CASUAL, UNPAID, ...
-  annualQuota Int // working days per calendar year; ignored when isPaid = false
-  isPaid      Boolean  @default(true)
-  accrualMode String   @default("ANNUAL_GRANT") // ANNUAL_GRANT, MONTHLY, PER_PAY_PERIOD
-  carryForwardLimit Decimal? @db.Decimal(8, 2)
-  allowNegative Boolean @default(false)
-  effectiveFrom DateTime @default(dbgenerated("CURRENT_DATE")) @db.Date
-  effectiveTo   DateTime? @db.Date
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String    @id @default(uuid())
+  tenantId          String
+  type              String // ANNUAL, SICK, CASUAL, UNPAID, ...
+  annualQuota       Int // working days per calendar year; ignored when isPaid = false
+  isPaid            Boolean   @default(true)
+  accrualMode       String    @default("ANNUAL_GRANT") // ANNUAL_GRANT, MONTHLY, PER_PAY_PERIOD
+  carryForwardLimit Decimal?  @db.Decimal(8, 2)
+  allowNegative     Boolean   @default(false)
+  effectiveFrom     DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
+  effectiveTo       DateTime? @db.Date
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant   Tenant               @relation(fields: [tenantId], references: [id])
   versions LeavePolicyVersion[]
 
   @@unique([tenantId, type])
@@ -171,18 +173,18 @@ model LeavePolicy {
 /// Immutable configuration history. New entitlement terms take effect only in
 /// a new version; submitted requests retain their policy snapshot.
 model LeavePolicyVersion {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   tenantId          String
   leavePolicyId     String
   version           Int
   annualQuota       Int
   isPaid            Boolean
   accrualMode       String
-  carryForwardLimit Decimal? @db.Decimal(8, 2)
-  allowNegative     Boolean  @default(false)
-  effectiveFrom     DateTime @db.Date
+  carryForwardLimit Decimal?  @db.Decimal(8, 2)
+  allowNegative     Boolean   @default(false)
+  effectiveFrom     DateTime  @db.Date
   effectiveTo       DateTime? @db.Date
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
 
   tenant      Tenant      @relation(fields: [tenantId], references: [id])
   leavePolicy LeavePolicy @relation(fields: [leavePolicyId], references: [id])
@@ -194,18 +196,18 @@ model LeavePolicyVersion {
 /// A tenant can route each leave type through direct managers, a role, or an
 /// explicitly named user. Rules are snapshotted on request submission.
 model LeaveApprovalRule {
-  id             String   @id @default(uuid())
-  tenantId       String
-  type           String
-  step           Int
-  approverKind   String   // DIRECT_MANAGER, ROLE, SPECIFIC_USER
-  approverRole   String?
-  approverUserId String?
-  reminderAfterHours Int @default(24)
+  id                   String   @id @default(uuid())
+  tenantId             String
+  type                 String
+  step                 Int
+  approverKind         String // DIRECT_MANAGER, ROLE, SPECIFIC_USER
+  approverRole         String?
+  approverUserId       String?
+  reminderAfterHours   Int      @default(24)
   escalationAfterHours Int?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -216,14 +218,14 @@ model LeaveApprovalRule {
 /// A time-bounded substitute for a particular approver. Delegation is checked
 /// at approval time; it never changes the workflow snapshot on the request.
 model LeaveApprovalDelegation {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   tenantId    String
   delegatorId String
   delegateId  String
-  startsAt    DateTime @db.Date
+  startsAt    DateTime  @db.Date
   endsAt      DateTime? @db.Date
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
 
   tenant    Tenant @relation(fields: [tenantId], references: [id])
   delegator User   @relation("Delegator", fields: [delegatorId], references: [id])
@@ -239,7 +241,7 @@ model LeaveApprovalFollowUp {
   tenantId       String
   leaveRequestId String
   step           Int
-  kind           String   // REMINDER, ESCALATION
+  kind           String // REMINDER, ESCALATION
   createdAt      DateTime @default(now())
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id])
@@ -261,34 +263,34 @@ model Holiday {
 }
 
 model LeaveRequest {
-  id           String    @id @default(uuid())
-  tenantId     String
-  employeeId   String
-  type         String
-  startDate    DateTime
-  endDate      DateTime
-  days         Int       @default(0) // working days (excludes weekends and tenant holidays)
-  requestKey   String?   // caller-provided idempotency key
-  policySnapshot Json?   // immutable policy used when this request was submitted
-  approvalSnapshot Json? // immutable approver-routing rules used at submission
+  id                String                  @id @default(uuid())
+  tenantId          String
+  employeeId        String
+  type              String
+  startDate         DateTime
+  endDate           DateTime
+  days              Int                     @default(0) // working days (excludes weekends and tenant holidays)
+  requestKey        String? // caller-provided idempotency key
+  policySnapshot    Json? // immutable policy used when this request was submitted
+  approvalSnapshot  Json? // immutable approver-routing rules used at submission
   approvalFollowUps LeaveApprovalFollowUp[]
-  reason       String?
-  status       String    @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
-  reviewedById String? // User id of the approver
-  reviewedAt   DateTime?
-  reviewNote   String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  reason            String?
+  status            String                  @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
+  reviewedById      String? // User id of the approver
+  reviewedAt        DateTime?
+  reviewNote        String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  employee Employee @relation(fields: [employeeId], references: [id])
+  tenant        Tenant               @relation(fields: [tenantId], references: [id])
+  employee      Employee             @relation(fields: [employeeId], references: [id])
   ledgerEntries LeaveBalanceLedger[]
   approvals     LeaveApproval[]
 
+  @@unique([tenantId, requestKey])
   @@index([tenantId])
   @@index([tenantId, employeeId])
   @@index([tenantId, status])
-  @@unique([tenantId, requestKey])
 }
 
 /// Immutable leave entitlement events. Positive days increase availability;
@@ -307,8 +309,8 @@ model LeaveBalanceLedger {
   metadata       Json?
   createdAt      DateTime @default(now())
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id])
-  employee     Employee     @relation(fields: [employeeId], references: [id])
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  employee     Employee      @relation(fields: [employeeId], references: [id])
   leaveRequest LeaveRequest? @relation(fields: [leaveRequestId], references: [id])
 
   @@unique([tenantId, employeeId, type, year, eventKey])
@@ -324,14 +326,14 @@ model LeaveApproval {
   leaveRequestId String
   step           Int      @default(1)
   approverId     String
-  decision       String   // APPROVED, REJECTED, CANCELLED
+  decision       String // APPROVED, REJECTED, CANCELLED
   note           String?
   actedAt        DateTime @default(now())
 
   leaveRequest LeaveRequest @relation(fields: [leaveRequestId], references: [id])
 
-  @@index([tenantId, leaveRequestId])
   @@unique([leaveRequestId, step])
+  @@index([tenantId, leaveRequestId])
 }
 
 model Job {
@@ -353,33 +355,33 @@ model Job {
 }
 
 model Application {
-  id                      String    @id @default(uuid())
-  tenantId                String
-  jobId                   String
-  stageId                 String?
-  candidateName           String
-  candidateEmail          String
-  resumeUrl               String? // legacy, unused
-  resumeFilename          String? // original filename, display only
-  resumeKey               String? // object-storage key (private)
-  resumeMimeType          String?
-  source                  String    @default("CAREERS_SITE") // CAREERS_SITE | LINKEDIN | INDEED | REFERRAL | OTHER
-  aiScore                 Int? // advisory match score 0-100, never used to auto-reject
-  aiReason                String?
-  aiScoredAt              DateTime?
-  status                  String    @default("APPLIED") // APPLIED, SCREENING, INTERVIEW, OFFERED, HIRED, REJECTED
-  interviewAt             DateTime?
-  interviewerEmail        String?
+  id                       String    @id @default(uuid())
+  tenantId                 String
+  jobId                    String
+  stageId                  String?
+  candidateName            String
+  candidateEmail           String
+  resumeUrl                String? // legacy, unused
+  resumeFilename           String? // original filename, display only
+  resumeKey                String? // object-storage key (private)
+  resumeMimeType           String?
+  source                   String    @default("CAREERS_SITE") // CAREERS_SITE | LINKEDIN | INDEED | REFERRAL | OTHER
+  aiScore                  Int? // advisory match score 0-100, never used to auto-reject
+  aiReason                 String?
+  aiScoredAt               DateTime?
+  status                   String    @default("APPLIED") // APPLIED, SCREENING, INTERVIEW, OFFERED, HIRED, REJECTED
+  interviewAt              DateTime?
+  interviewerEmail         String?
   interviewDurationMinutes Int?
-  interviewLocation       String?
+  interviewLocation        String?
   interviewScheduleVersion Int       @default(0)
-  interviewReminderSentAt DateTime? // set atomically when reminder outbox records are queued
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  interviewReminderSentAt  DateTime? // set atomically when reminder outbox records are queued
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
-  tenant             Tenant             @relation(fields: [tenantId], references: [id])
-  job                Job                @relation(fields: [jobId], references: [id])
-  stage              HiringStage?       @relation(fields: [stageId], references: [id])
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
+  job                Job                 @relation(fields: [jobId], references: [id])
+  stage              HiringStage?        @relation(fields: [stageId], references: [id])
   assessmentRequests AssessmentRequest[]
   events             ApplicationEvent[]
   feedback           InterviewFeedback[]
@@ -399,7 +401,7 @@ model HiringStage {
   tenantId  String
   key       String
   name      String
-  category  String   // APPLIED, SCREENING, INTERVIEW, OFFERED, HIRED, REJECTED
+  category  String // APPLIED, SCREENING, INTERVIEW, OFFERED, HIRED, REJECTED
   position  Int
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -436,7 +438,7 @@ model ApplicationEvent {
 model AssessmentIntegration {
   id               String   @id @default(uuid())
   tenantId         String
-  provider         String   // stable provider key, e.g. HACKERRANK or TESTGORILLA
+  provider         String // stable provider key, e.g. HACKERRANK or TESTGORILLA
   displayName      String
   webhookSecretEnc String
   isActive         Boolean  @default(true)
@@ -455,21 +457,21 @@ model AssessmentIntegration {
 /// A vendor-hosted test linked to an application. The vendor owns the test;
 /// HRMS stores only the normalized lifecycle and optional result/report link.
 model AssessmentRequest {
-  id              String   @id @default(uuid())
-  tenantId        String
-  applicationId   String
-  integrationId   String
-  externalId      String?
-  status          String   @default("PENDING") // PENDING, COMPLETED, FAILED, EXPIRED
-  assessmentUrl   String?
-  score           Decimal? @db.Decimal(5, 2)
-  recommendation  String?
-  reportUrl       String?
-  requestedAt     DateTime @default(now())
-  completedAt     DateTime?
-  expiresAt       DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String    @id @default(uuid())
+  tenantId       String
+  applicationId  String
+  integrationId  String
+  externalId     String?
+  status         String    @default("PENDING") // PENDING, COMPLETED, FAILED, EXPIRED
+  assessmentUrl  String?
+  score          Decimal?  @db.Decimal(5, 2)
+  recommendation String?
+  reportUrl      String?
+  requestedAt    DateTime  @default(now())
+  completedAt    DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   tenant      Tenant                @relation(fields: [tenantId], references: [id])
   application Application           @relation(fields: [applicationId], references: [id])
@@ -483,10 +485,10 @@ model AssessmentRequest {
 /// Idempotency fence for vendor webhook deliveries. No raw candidate result is
 /// retained here; AssessmentRequest stores the normalized result only.
 model AssessmentWebhookEvent {
-  id            String   @id @default(uuid())
-  integrationId String
+  id              String   @id @default(uuid())
+  integrationId   String
   providerEventId String
-  receivedAt    DateTime @default(now())
+  receivedAt      DateTime @default(now())
 
   integration AssessmentIntegration @relation(fields: [integrationId], references: [id])
 
@@ -500,8 +502,8 @@ model InterviewFeedback {
   tenantId       String
   applicationId  String
   authorUserId   String
-  rating         Int      // 1 (poor) – 5 (excellent)
-  recommendation String   // STRONG_YES | YES | NEUTRAL | NO | STRONG_NO
+  rating         Int // 1 (poor) – 5 (excellent)
+  recommendation String // STRONG_YES | YES | NEUTRAL | NO | STRONG_NO
   notes          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -521,7 +523,7 @@ model HiringOutboxEvent {
   tenantId      String
   applicationId String?
   eventKey      String
-  type          String    // EMAIL, HIRING_QUEUE, SLACK_NEW_APPLICATION
+  type          String // EMAIL, HIRING_QUEUE, SLACK_NEW_APPLICATION
   payload       Json
   status        String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
   attempts      Int       @default(0)
@@ -560,18 +562,18 @@ model Notification {
   sentAt          DateTime?
   readAt          DateTime?
   archivedAt      DateTime?
-  link             String?
+  link            String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   tenant Tenant             @relation(fields: [tenantId], references: [id])
   event  NotificationEvent? @relation(fields: [eventId], references: [id])
 
+  @@unique([tenantId, idempotencyKey])
   @@index([tenantId, createdAt])
   @@index([tenantId, recipientUserId])
   @@index([tenantId, recipientUserId, readAt, archivedAt])
   @@index([eventId])
-  @@unique([tenantId, idempotencyKey])
 }
 
 /// One business occurrence, independent of how it is delivered. For example,
@@ -586,9 +588,9 @@ model NotificationEvent {
   data        Json
   createdAt   DateTime @default(now())
 
-  tenant       Tenant                    @relation(fields: [tenantId], references: [id])
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id])
   notifications Notification[]
-  outboxEvents NotificationOutboxEvent[]
+  outboxEvents  NotificationOutboxEvent[]
 
   @@unique([tenantId, eventKey])
   @@index([tenantId, eventType, createdAt])
@@ -601,8 +603,9 @@ model NotificationOutboxEvent {
   tenantId            String
   notificationEventId String
   eventKey            String
-  type                String    // EMAIL (additional channel adapters can be added later)
+  type                String // EMAIL (additional channel adapters can be added later)
   payload             Json
+  encryptedPayload    String? // AES-256-GCM payload for credential-bearing messages
   status              String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
   attempts            Int       @default(0)
   availableAt         DateTime  @default(now())
@@ -627,7 +630,7 @@ model NotificationPreference {
   tenantId  String
   userId    String
   eventType String   @default("*")
-  channel   String   // IN_APP, EMAIL, SLACK
+  channel   String // IN_APP, EMAIL, SLACK
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -636,6 +639,55 @@ model NotificationPreference {
 
   @@unique([tenantId, userId, eventType, channel])
   @@index([tenantId, userId])
+}
+
+/// An administrator announcement. Audience membership is snapshotted into
+/// recipient rows so later department changes do not alter a scheduled send.
+model NotificationCampaign {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  createdByUserId     String
+  subject             String
+  body                String
+  audience            Json
+  status              String    @default("SCHEDULED") // SCHEDULED, PROCESSING, COMPLETED, CANCELLED
+  scheduledAt         DateTime  @default(now())
+  lockedAt            DateTime?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  totalRecipients     Int       @default(0)
+  processedRecipients Int       @default(0)
+  failedRecipients    Int       @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant     Tenant                          @relation(fields: [tenantId], references: [id])
+  recipients NotificationCampaignRecipient[]
+
+  @@index([tenantId, createdAt])
+  @@index([status, scheduledAt, lockedAt])
+}
+
+model NotificationCampaignRecipient {
+  id          String    @id @default(uuid())
+  tenantId    String
+  campaignId  String
+  employeeId  String
+  userId      String?
+  email       String
+  status      String    @default("PENDING") // PENDING, QUEUED, FAILED
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now())
+  error       String?
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant   Tenant               @relation(fields: [tenantId], references: [id])
+  campaign NotificationCampaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, email])
+  @@index([tenantId, campaignId, status, availableAt])
 }
 
 model AttendanceRecord {

@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { email, paginationSchema } from '../../../common/validation/common.schemas';
+import {
+  email,
+  paginationSchema,
+} from '../../../common/validation/common.schemas';
 
 export const composeEmailSchema = z.object({
   to: email,
@@ -15,13 +18,17 @@ export const announceSchema = z.object({
 });
 export type AnnounceDto = z.infer<typeof announceSchema>;
 
+export const createNotificationCampaignSchema = announceSchema.extend({
+  scheduledAt: z.string().datetime({ offset: true }).optional(),
+});
+export type CreateNotificationCampaignDto = z.infer<
+  typeof createNotificationCampaignSchema
+>;
+
 export const listNotificationsSchema = paginationSchema.extend({
   scope: z.enum(['mine', 'all']).default('mine'),
   category: z.string().trim().min(1).max(50).optional(),
-  unread: z
-    .enum(['true', 'false'])
-    .transform((value) => value === 'true')
-    .optional(),
+  unread: z.enum(['true', 'false']).optional(),
 });
 export type ListNotificationsQuery = z.infer<typeof listNotificationsSchema>;
 

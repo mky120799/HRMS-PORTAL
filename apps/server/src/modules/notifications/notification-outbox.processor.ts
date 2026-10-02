@@ -12,6 +12,7 @@ import {
   RabbitMqService,
 } from '../../common/messaging/rabbitmq.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CryptoService } from '../../common/crypto/crypto.service';
 
 const POLL_MS = 2_000;
 const LEASE_MS = 5 * 60_000;
@@ -29,16 +30,28 @@ export class NotificationOutboxProcessor
   constructor(
     private readonly prisma: PrismaService,
     private readonly rabbit: RabbitMqService,
+    private readonly crypto: CryptoService,
   ) {}
 
   onModuleInit() {
-    this.timer = setInterval(() => void this.drain(), POLL_MS);
+    this.timer = setInterval(() => this.scheduleDrain(), POLL_MS);
     this.timer.unref();
-    void this.drain();
+    this.scheduleDrain();
   }
 
   onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  private scheduleDrain() {
+    void this.drain().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Notification outbox drain failed: ${message}`);
+      Sentry.captureException(
+        error instanceof Error ? error : new Error(message),
+        { tags: { component: 'notification-outbox-drain' } },
+      );
+    });
   }
 
   async drain() {
@@ -85,11 +98,12 @@ export class NotificationOutboxProcessor
     id: string;
     type: string;
     payload: Prisma.JsonValue;
+    encryptedPayload: string | null;
   }) {
     if (event.type !== 'EMAIL') {
       throw new Error(`Unsupported notification outbox type ${event.type}`);
     }
-    const payload = this.emailPayload(event.payload);
+    const payload = this.emailPayload(event.payload, event.encryptedPayload);
     await this.rabbit.publish<EmailJob>(EMAIL_QUEUE, 'send', payload);
     await this.prisma.notificationOutboxEvent.update({
       where: { id: event.id },
@@ -154,7 +168,16 @@ export class NotificationOutboxProcessor
     );
   }
 
-  private emailPayload(value: Prisma.JsonValue): EmailJob {
+  private emailPayload(
+    value: Prisma.JsonValue,
+    encryptedPayload: string | null,
+  ): EmailJob {
+    if (encryptedPayload) {
+      const decrypted: unknown = JSON.parse(
+        this.crypto.decrypt(encryptedPayload),
+      );
+      return this.emailPayload(decrypted as Prisma.JsonValue, null);
+    }
     if (!value || Array.isArray(value) || typeof value !== 'object') {
       throw new Error('Invalid email outbox payload');
     }
@@ -168,7 +191,8 @@ export class NotificationOutboxProcessor
   }
 
   private optionalNotificationId(value: Prisma.JsonValue) {
-    if (!value || Array.isArray(value) || typeof value !== 'object') return null;
+    if (!value || Array.isArray(value) || typeof value !== 'object')
+      return null;
     const notificationId = (value as Record<string, Prisma.JsonValue>)[
       'notificationId'
     ];

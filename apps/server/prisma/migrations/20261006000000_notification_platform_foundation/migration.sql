@@ -35,6 +35,7 @@ CREATE TABLE "NotificationOutboxEvent" (
   "eventKey" TEXT NOT NULL,
   "type" TEXT NOT NULL,
   "payload" JSONB NOT NULL,
+  "encryptedPayload" TEXT,
   "status" TEXT NOT NULL DEFAULT 'PENDING',
   "attempts" INTEGER NOT NULL DEFAULT 0,
   "availableAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -97,3 +98,59 @@ ALTER TABLE "NotificationPreference"
 ALTER TABLE "Notification"
   ADD CONSTRAINT "Notification_eventId_fkey"
   FOREIGN KEY ("eventId") REFERENCES "NotificationEvent"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+CREATE TABLE "NotificationCampaign" (
+  "id" TEXT NOT NULL,
+  "tenantId" TEXT NOT NULL,
+  "createdByUserId" TEXT NOT NULL,
+  "subject" TEXT NOT NULL,
+  "body" TEXT NOT NULL,
+  "audience" JSONB NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'SCHEDULED',
+  "scheduledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "lockedAt" TIMESTAMP(3),
+  "startedAt" TIMESTAMP(3),
+  "completedAt" TIMESTAMP(3),
+  "totalRecipients" INTEGER NOT NULL DEFAULT 0,
+  "processedRecipients" INTEGER NOT NULL DEFAULT 0,
+  "failedRecipients" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "NotificationCampaign_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "NotificationCampaignRecipient" (
+  "id" TEXT NOT NULL,
+  "tenantId" TEXT NOT NULL,
+  "campaignId" TEXT NOT NULL,
+  "employeeId" TEXT NOT NULL,
+  "userId" TEXT,
+  "email" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'PENDING',
+  "attempts" INTEGER NOT NULL DEFAULT 0,
+  "availableAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "error" TEXT,
+  "processedAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "NotificationCampaignRecipient_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX "NotificationCampaign_tenantId_createdAt_idx"
+  ON "NotificationCampaign"("tenantId", "createdAt");
+CREATE INDEX "NotificationCampaign_status_scheduledAt_lockedAt_idx"
+  ON "NotificationCampaign"("status", "scheduledAt", "lockedAt");
+CREATE UNIQUE INDEX "NotificationCampaignRecipient_campaignId_email_key"
+  ON "NotificationCampaignRecipient"("campaignId", "email");
+CREATE INDEX "NotificationCampaignRecipient_tenantId_campaignId_status_availableAt_idx"
+  ON "NotificationCampaignRecipient"("tenantId", "campaignId", "status", "availableAt");
+
+ALTER TABLE "NotificationCampaign"
+  ADD CONSTRAINT "NotificationCampaign_tenantId_fkey"
+  FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "NotificationCampaignRecipient"
+  ADD CONSTRAINT "NotificationCampaignRecipient_tenantId_fkey"
+  FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "NotificationCampaignRecipient"
+  ADD CONSTRAINT "NotificationCampaignRecipient_campaignId_fkey"
+  FOREIGN KEY ("campaignId") REFERENCES "NotificationCampaign"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

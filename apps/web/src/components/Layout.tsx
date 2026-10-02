@@ -1,4 +1,5 @@
 import { NavLink, useNavigate, Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Users,
@@ -30,6 +31,13 @@ import { DemoBanner } from "./DemoBanner";
 export function Layout({ children }: { children: React.ReactNode }) {
   const nav = useNavigate();
   const auth = getAuth();
+  const unread = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: async () =>
+      (await api.get<{ count: number }>("/notifications/unread-count")).data,
+    enabled: Boolean(auth),
+    refetchInterval: 30_000,
+  });
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -146,6 +154,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           >
             <Bell size={20} />
             Notifications
+            {Boolean(unread.data?.count) && (
+              <span className="ml-auto min-w-5 rounded-full bg-indigo-500 px-1.5 py-0.5 text-center text-xs font-medium text-white">
+                {unread.data!.count > 99 ? "99+" : unread.data!.count}
+              </span>
+            )}
           </NavLink>
 
           <NavLink
@@ -182,19 +195,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           {(auth?.user.role === "ADMIN" || auth?.user.role === "MANAGER") && (
             <NavLink
-                to="/hiring"
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                    isActive
-                      ? "bg-primary text-white font-semibold"
-                      : "text-slate-400 hover:text-white hover:bg-white/5",
-                  )
-                }
-              >
-                <Briefcase size={20} />
-                Hiring
-              </NavLink>
+              to="/hiring"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                  isActive
+                    ? "bg-primary text-white font-semibold"
+                    : "text-slate-400 hover:text-white hover:bg-white/5",
+                )
+              }
+            >
+              <Briefcase size={20} />
+              Hiring
+            </NavLink>
           )}
 
           {auth?.user.role === "ADMIN" && (
@@ -213,7 +226,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Wallet size={20} />
                 Payroll
               </NavLink>
-              
+
               <NavLink
                 to="/billing"
                 className={({ isActive }) =>
@@ -263,7 +276,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           {auth?.user.role === "SUPER_ADMIN" && (
             <div className="mt-4 pt-4 border-t border-white/10">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-3">System</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-3">
+                System
+              </p>
               <NavLink
                 to="/super-admin"
                 className={({ isActive }) =>
@@ -308,36 +323,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 ml-[260px]">
         <DemoBanner />
         <div className="p-8">
-        <header className="flex items-center justify-between mb-8 pb-4 border-b border-border/40">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-10 w-10 font-semibold bg-primary text-primary-foreground">
-              <AvatarFallback className="bg-primary text-white">
-                {auth?.user.name?.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <div className="font-semibold text-[15px]">{auth?.user.name}</div>
-              <div className="text-muted-foreground text-xs">
-                {auth?.user.role}
+          <header className="flex items-center justify-between mb-8 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-4">
+              <Avatar className="h-10 w-10 font-semibold bg-primary text-primary-foreground">
+                <AvatarFallback className="bg-primary text-white">
+                  {auth?.user.name?.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="font-semibold text-[15px]">
+                  {auth?.user.name}
+                </div>
+                <div className="text-muted-foreground text-xs">
+                  {auth?.user.role}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="icon"
-              asChild
-              className="rounded-full bg-background/50 backdrop-blur-sm"
-            >
-              <Link to="/profile">
-                <User size={18} className="text-muted-foreground" />
-              </Link>
-            </Button>
-          </div>
-        </header>
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                size="icon"
+                asChild
+                className="rounded-full bg-background/50 backdrop-blur-sm"
+              >
+                <Link to="/profile">
+                  <User size={18} className="text-muted-foreground" />
+                </Link>
+              </Button>
+            </div>
+          </header>
 
-        <section className="animate-fade-in">{children}</section>
+          <section className="animate-fade-in">{children}</section>
         </div>
       </main>
 

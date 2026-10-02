@@ -12,9 +12,10 @@ import { LeavePayrollService } from './leave-payroll.service';
 import { LeavePolicyService } from './leave-policy.service';
 import { LeaveRequestService } from './leave-request.service';
 import { LeaveTransactionService } from './leave-transaction.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [IntegrationsModule],
+  imports: [IntegrationsModule, NotificationsModule],
   controllers: [LeavesController],
   providers: [
     LeavesService,

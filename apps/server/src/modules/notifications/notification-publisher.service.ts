@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { CryptoService } from '../../common/crypto/crypto.service';
 import type { RenderedEmail } from '../../common/email/templates';
 
 export type NotificationChannel = 'IN_APP' | 'EMAIL';
@@ -23,6 +24,7 @@ export interface PublishNotificationInput {
   link?: string;
   email?: RenderedEmail;
   mandatory?: boolean;
+  sensitive?: boolean;
 }
 
 /**
@@ -32,10 +34,9 @@ export interface PublishNotificationInput {
  */
 @Injectable()
 export class NotificationPublisherService {
-  async publish(
-    tx: Prisma.TransactionClient,
-    input: PublishNotificationInput,
-  ) {
+  constructor(private readonly crypto: CryptoService) {}
+
+  async publish(tx: Prisma.TransactionClient, input: PublishNotificationInput) {
     const event = await tx.notificationEvent.upsert({
       where: {
         tenantId_eventKey: {
@@ -148,7 +149,9 @@ export class NotificationPublisherService {
             channel: 'EMAIL',
             title: input.email.subject,
             subject: input.email.subject,
-            body: input.email.html,
+            body: input.sensitive
+              ? '[redacted: contains a one-time credential link]'
+              : input.email.html,
             recipientUserId: recipient.userId ?? null,
             recipientEmail: email,
             idempotencyKey: deliveryKey,
@@ -156,6 +159,13 @@ export class NotificationPublisherService {
             link: input.link,
           },
         });
+        const emailJob = {
+          notificationId: notification.id,
+          to: email,
+          subject: input.email.subject,
+          html: input.email.html,
+          text: input.email.text,
+        };
         await tx.notificationOutboxEvent.upsert({
           where: {
             tenantId_eventKey: {
@@ -169,13 +179,12 @@ export class NotificationPublisherService {
             notificationEventId: event.id,
             eventKey: deliveryKey,
             type: 'EMAIL',
-            payload: {
-              notificationId: notification.id,
-              to: email,
-              subject: input.email.subject,
-              html: input.email.html,
-              text: input.email.text,
-            },
+            payload: input.sensitive
+              ? { notificationId: notification.id }
+              : emailJob,
+            encryptedPayload: input.sensitive
+              ? this.crypto.encrypt(JSON.stringify(emailJob))
+              : null,
           },
         });
       }
