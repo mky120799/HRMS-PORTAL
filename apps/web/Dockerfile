@@ -11,6 +11,9 @@ COPY apps/web apps/web
 # Same-origin API behind the reverse proxy; override for split-domain deployments.
 ARG VITE_API_BASE_URL=/api/v1
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+# Tags browser error reports (POST /client-errors) with the release that produced them.
+ARG VITE_RELEASE=unknown
+ENV VITE_RELEASE=$VITE_RELEASE
 RUN npm run build -w @hrms/web
 
 # Unprivileged nginx listens on 8080 and runs as a non-root user.

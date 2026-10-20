@@ -138,6 +138,7 @@ export function CustomRolesPanel() {
               size="sm"
               disabled={remove.isPending || role.userCount > 0}
               title={role.userCount > 0 ? 'Reassign its users first, or deactivate it' : undefined}
+              aria-label={`Delete role ${role.name}`}
               onClick={() => window.confirm(`Delete the role "${role.name}"?`) && remove.mutate(role)}
             >
               <Trash2 size={14} />

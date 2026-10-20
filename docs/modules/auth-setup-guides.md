@@ -83,26 +83,39 @@ tenant, and only signs in people who already have an account in the workspace
 HRMS runs Google sign-in through its standard OIDC verifier (signature, issuer,
 audience, nonce, `email_verified`).
 
-## Role mapping (OIDC and SAML)
+## Role mapping (OIDC, SAML and SCIM groups)
 
-Each provider can map IdP groups to HRMS roles, one per line in Settings:
+Each provider can map IdP groups to HRMS roles, one per line in Settings. A custom
+role (Settings → Custom roles) is written as `custom:<KEY>`:
 
 ```text
 HR Team = HR_ADMIN
 Payroll = PAYROLL_ADMIN
+APAC HR = custom:REGIONAL_HR
 People Managers = MANAGER
 Everyone = EMPLOYEE
 ```
 
 - Lines are checked top to bottom; the first group the user belongs to wins.
   Group names are matched without regard to case.
-- Applied when a user is created by JIT and at every later SSO sign-in; when the
-  role changes, the user's other sessions are signed out.
+- Applied when a user is created by JIT, at every later SSO sign-in, and — with SCIM
+  groups — whenever group membership changes. When the role changes, the user's
+  sessions are signed out.
+- The mapping follows the same no-escalation rules as people do
+  (`roles-and-permissions.md`). A line naming a deactivated or unknown custom role is
+  skipped (logged as a warning) and the user keeps their role; sign-in still works.
 - `ADMIN` cannot be granted by an IdP, and users who are `ADMIN` in HRMS are never
   changed by the mapping. Administrators are managed inside HRMS only.
 - Group sources: OIDC `groups` or `roles` claims; SAML `groups`, `memberOf`,
   `roles` or the Entra groups/role claim (or the attribute named in the mapping).
-- Users who match no line keep their current role (new JIT users get `EMPLOYEE`).
+- At SSO sign-in, users who match no line keep their current role (new JIT users get
+  `EMPLOYEE`).
+- With SCIM groups, a user who leaves their last mapped group goes back to `EMPLOYEE`
+  **if the identity provider set their role**. A role set by a person in HRMS is kept
+  (the Employees page shows an "IdP" badge on roles an IdP manages).
+- SAML/OIDC group claims and SCIM group names should match the same mapping lines.
+  Entra sends group object IDs in claims by default but display names over SCIM; map
+  both, or configure Entra to emit names (`sAMAccountName`/cloud group names).
 
 ## Okta SCIM
 
@@ -112,16 +125,22 @@ Everyone = EMPLOYEE
 4. In HRMS Settings, click **Rotate SCIM token** for the provider.
 5. Copy the token immediately and paste it into Okta as the bearer token.
 6. Enable create, update and deactivate users.
-7. Test with one user before assigning a large group.
+7. Optional: **Push Groups** for the groups named in the role mapping.
+8. Test with one user before assigning a large group.
 
 HRMS behavior:
 
-- Create user → creates both `User` and `Employee` (role `EMPLOYEE`; SCIM never
-  sets roles).
+- Create user → creates both `User` and `Employee` (role `EMPLOYEE`; a `role`
+  attribute on the user is ignored — roles come only from group mapping).
 - Update user → updates email/name/department/title.
 - Deactivate user (PATCH `active: false` or DELETE) → disables login and revokes
   sessions immediately.
 - Accepts `application/scim+json`, returns raw SCIM JSON and RFC 7644 error bodies.
+- Groups (`/scim/v2/Groups`): create, rename, add/remove members (Okta
+  `members[value eq "…"]` and Entra `members` value lists), replace, delete, and
+  `filter=displayName eq "…"` with `excludedAttributes=members`. Every membership
+  change re-applies the role mapping to the affected users (see Role mapping).
+  Member ids must be users of the same workspace; others are ignored.
 
 ## Microsoft Entra ID SCIM
 
@@ -138,7 +157,9 @@ HRMS behavior:
    - `title` → designation
    - `department` → department
    - `active` → account enabled/disabled
-8. Start with a small assigned group before broad rollout.
+8. Optional: enable group provisioning (Mappings → Provision Microsoft Entra ID
+   Groups) and assign the groups used in the role mapping.
+9. Start with a small assigned group before broad rollout.
 
 ## Okta SAML
 

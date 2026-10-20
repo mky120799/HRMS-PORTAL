@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
+import { QueryErrorRow } from '../components/QueryErrorState';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 
@@ -85,12 +86,13 @@ export function LeavePage() {
 
   const policies = useQuery({ queryKey: ['leave-policies'], queryFn: async () => (await api.get<Policy[]>('/leave-policies')).data });
   const balance = useQuery({ queryKey: ['leave', 'balance'], queryFn: async () => (await api.get<Balance[]>('/leave-requests/balance')).data });
-  const ledger = useQuery({ queryKey: ['leave', 'ledger'], queryFn: async () => (await api.get<LedgerEntry[]>('/leave-balance-ledger')).data });
+  const ledger = useQuery({ queryKey: ['leave', 'ledger'], meta: { inlineError: true }, queryFn: async () => (await api.get<LedgerEntry[]>('/leave-balance-ledger')).data });
   const policyVersions = useQuery({ queryKey: ['leave-policy-versions', adminType], enabled: canAdminLeave, queryFn: async () => (await api.get<Policy[]>(`/leave-policies/${adminType}/versions`)).data });
   const approvalRules = useQuery({ queryKey: ['leave-approval-rules'], enabled: canAdminLeave, queryFn: async () => (await api.get<Array<ApprovalRule & { type: string }>>('/leave-approval-rules')).data });
-  const mine = useQuery({ queryKey: ['leave', 'mine'], queryFn: async () => (await api.get<Paged<Leave>>('/leave-requests', { params: { scope: 'mine', pageSize: 50 } })).data });
+  const mine = useQuery({ queryKey: ['leave', 'mine'], meta: { inlineError: true }, queryFn: async () => (await api.get<Paged<Leave>>('/leave-requests', { params: { scope: 'mine', pageSize: 50 } })).data });
   const pending = useQuery({
     queryKey: ['leave', 'review', reviewScope],
+    meta: { inlineError: true },
     enabled: canReview,
     queryFn: async () => (await api.get<Paged<Leave>>('/leave-requests', { params: { scope: reviewScope, status: 'PENDING', pageSize: 50 } })).data,
   });
@@ -255,7 +257,8 @@ export function LeavePage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {!mine.isLoading && !mine.data?.items.length && (
+                {mine.isError && <QueryErrorRow colSpan={5} title="Your leave requests could not be loaded" error={mine.error} onRetry={() => mine.refetch()} />}
+                {!mine.isLoading && !mine.isError && !mine.data?.items.length && (
                   <TableRow>
                     <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                       No leave requests yet.
@@ -316,7 +319,8 @@ export function LeavePage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {!pending.isLoading && !pending.data?.items.length && (
+                {pending.isError && <QueryErrorRow colSpan={6} title="Requests to review could not be loaded" error={pending.error} onRetry={() => pending.refetch()} />}
+                {!pending.isLoading && !pending.isError && !pending.data?.items.length && (
                   <TableRow>
                     <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
                       Nothing to review.
@@ -346,7 +350,8 @@ export function LeavePage() {
                   <TableCell className="pr-6 text-sm text-muted-foreground">{entry.metadata?.reason ?? '—'}</TableCell>
                 </TableRow>
               ))}
-              {!ledger.isLoading && !ledger.data?.length && <TableRow><TableCell colSpan={5} className="h-20 text-center text-muted-foreground">No balance events yet.</TableCell></TableRow>}
+              {ledger.isError && <QueryErrorRow colSpan={5} title="Balance history could not be loaded" error={ledger.error} onRetry={() => ledger.refetch()} />}
+              {!ledger.isLoading && !ledger.isError && !ledger.data?.length && <TableRow><TableCell colSpan={5} className="h-20 text-center text-muted-foreground">No balance events yet.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>

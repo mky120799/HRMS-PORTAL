@@ -63,6 +63,19 @@ authentication itself global and order the chain explicitly.
 req.user.sub`, but the strategy set `userId`, not `sub`. `userId: undefined` → no filter →
 `findFirst` returned the first employee in the tenant. Same root cause as story 1, different symptom.
 
+**The invisible error messages.** Every failed save called `showToast(message, 'error')`, and
+the toast provider rendered `<div className="toast-stack">` — a class that existed in no
+stylesheet. Toasts were appended as plain text at the bottom of the page, so users never saw
+why an action failed. Nothing errored, so no test noticed. Fix: a fixed-position, `aria-live`
+stack, plus a browser check that asserts the stack is `position: fixed`. Lesson: test what the
+user sees, not just that the function was called.
+
+**Blank screen after every deploy.** Pages are code-split into hashed chunks, and each release
+replaces them. A tab opened before the deploy asks for the old chunk, gets a 404, and with no
+error boundary React unmounts everything. Fix: catch chunk-load errors, reload once (guarded
+by a timestamp so a genuinely missing file cannot loop), otherwise show "a new version is
+available", and report it to `/client-errors`.
+
 ## 5. Likely questions — short answers
 
 **How do you guarantee tenant isolation?** Tenant id comes only from the verified token; the
@@ -71,8 +84,8 @@ are tenant-prefixed; a test suite creates two tenants and attacks across them. N
 
 **How does it scale?** API tasks are stateless → autoscale on CPU (2–10). DB: vertical + read
 replicas later; indexes on `(tenantId, …)`. Analytics uses aggregates only. Queues absorb
-bursts. Bottlenecks I'd watch: DB connections (Prisma `connection_limit` per task), per-instance
-rate limits (move to Redis).
+bursts. Rate limits are shared through Redis, so adding tasks does not multiply login attempts.
+Bottleneck I'd watch: DB connections (Prisma `connection_limit` per task).
 
 **How do you deploy without downtime?** Rolling ECS deploy with min healthy 100 %, readiness
 checks on DB+RabbitMQ, 30 s connection draining, circuit-breaker rollback. Migrations run first as
@@ -93,12 +106,12 @@ Password change or admin offboarding bumps `tokenVersion` and kills everything.
 **GDPR/DPDP?** Self-service export, erasure after offboarding (keeping statutory payroll
 records), candidate deletion, consent on applications, audit trail, encryption at rest/in transit.
 
-**What would you do next?** Redis rate limiting, RLS, deeper statutory payroll, separate
-worker service. (The httpOnly refresh cookie, step-up MFA and instant session revocation are
-already done — see [modules/auth.md](modules/auth.md#interview-talking-points).) ([PRODUCTION_PLAN.md](PRODUCTION_PLAN.md#4-roadmap))
+**What would you do next?** RLS, deeper statutory payroll, separate worker service.
+(The httpOnly refresh cookie, step-up MFA, instant session revocation, Redis rate limiting,
+custom roles with no-escalation rules, SCIM groups and single-use TOTP codes are already done — see [modules/auth.md](modules/auth.md#interview-talking-points).) ([PRODUCTION_PLAN.md](PRODUCTION_PLAN.md#4-roadmap))
 
 ## 6. Module one-liners
-* **Auth** — purpose-bound JWTs, rotation + reuse detection, lockout, TOTP, SSO without auto-provisioning.
+* **Auth** — purpose-bound JWTs, rotation + reuse detection, lockout, single-use TOTP, OIDC/SAML/SCIM, custom roles where nobody can grant more than they hold.
 * **Tenants** — settings with SSRF-safe webhooks, CIDR allow-list with lock-out protection, cached tenant snapshot.
 * **Employees** — field-level visibility, reporting-cycle checks, offboarding that revokes access in one transaction.
 * **Leave** — server-computed working days, balance includes pending, manager-only approval, race-safe conditional update.

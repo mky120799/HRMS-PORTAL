@@ -20,15 +20,18 @@ The core HR record: directory, reporting lines, joining/exit, logins and roles.
 | `POST /employees` | `employees.manage`, seat limit | Validates manager belongs to tenant |
 | `PATCH /employees/:id` | `employees.manage` | Audited with before/after values; rejects reporting cycles |
 | `POST /employees/:id/offboard` | `employees.offboard` | See below |
-| `PATCH /employees/:id/role` | `employees.roles.manage` | Changes the linked user's role |
+| `PATCH /employees/:id/role` | `employees.roles.manage` + step-up | `{ role }` or `{ customRoleId }`; changes the linked user's role |
 
 ## Rules
 * **Reporting cycles** (A→B→A) are rejected by walking up the manager chain.
 * **Offboarding** (one transaction): status `EXITED` + exit date, direct reports move to the
   leaver's manager, pending leave is cancelled, the login is deactivated and every session
   revoked (`tokenVersion++`). Exited employees free a seat.
-* **Role changes:** you cannot change your own role; the last active `ADMIN` cannot be demoted;
-  the target's sessions are revoked so the new role applies at next sign-in.
+* **Role changes** go through `RoleAssignmentService`: you cannot change your own role, can only
+  grant permissions you hold, only an `ADMIN` grants or changes `ADMIN`, and the last active
+  `ADMIN` cannot be demoted. The target's sessions are revoked so the new role applies at once.
+  Roles set by an identity provider show an "IdP" badge (`user.roleManagedBy`); see
+  `roles-and-permissions.md`.
 * Exited employees are hidden from directory views without `employees.read_full` and cannot be edited.
 
 ## Tests

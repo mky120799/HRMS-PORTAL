@@ -16,6 +16,7 @@ flowchart LR
     ALB -- "/api/*" --> API[server · NestJS on Fastify<br/>ECS Fargate × N]
     API --> PG[(PostgreSQL<br/>RDS Multi-AZ)]
     API --> MQ[(RabbitMQ<br/>Amazon MQ Multi-AZ)]
+    API --> RD[(Redis<br/>ElastiCache · rate limits)]
     MQ --> WK[Queue consumers<br/>same process]
     API --> S3[(S3<br/>private files)]
     WK --> SES[SES email]
@@ -32,6 +33,7 @@ flowchart LR
 | Validation | zod | One schema gives runtime validation *and* the TypeScript type; unknown keys are stripped (mass-assignment protection) |
 | Database | PostgreSQL 16 via Prisma | Relational data with strong constraints (unique, FK); Prisma migrations are versioned SQL |
 | Queue | RabbitMQ on Amazon MQ | Durable email, AI and leave work with publisher confirms, delayed retries and dead-letter queues |
+| Rate limits | Redis on ElastiCache | One atomic counter per client and route shared by all API tasks; falls back to per-task counters if Redis is down |
 | Files | S3 (private) | Durable, encrypted; files are streamed through authorised endpoints, never public URLs |
 | Web | React 18, React Query, Tailwind, Radix UI | Server-state caching, accessible primitives; routes are code-split |
 | Infra | Terraform, ECS Fargate, ALB, WAF, Secrets Manager, CloudWatch | Managed, horizontally scalable, no servers to patch |
@@ -65,7 +67,8 @@ docs/                     this documentation
 
 | Folder | Responsibility |
 | --- | --- |
-| `auth/` | `TokenService` (purpose-bound JWTs), `@Public/@Roles/@Permissions/@RequireStepUp/@CurrentUser/@CurrentTenant` decorators, `AuthUser` type, permission map, refresh/SSO cookies, session cache, replay guard |
+| `auth/` | `TokenService` (purpose-bound JWTs), `@Public/@Roles/@Permissions/@RequireStepUp/@CurrentUser/@CurrentTenant` decorators, `AuthUser` type, permission map, effective permissions (custom roles), `RoleAssignmentService` (the one place roles change), refresh/SSO cookies, session cache, replay guard |
+| `rate-limit/` | Redis-backed throttler storage (Lua script) with in-memory fallback |
 | `guards/` | Global guard chain (below) and `EmployeeLimitGuard` |
 | `tenant/` | `TenantContextService` — cached tenant snapshot (suspension, IP allow-list, plan) |
 | `crypto/` | AES-256-GCM field encryption |
@@ -240,6 +243,11 @@ image can run as a separate "worker" ECS service.
 * **Request ids:** generated (or taken from `x-request-id`), returned in every response and
   error body — support can find the exact log line from a user's screenshot.
 * **Errors:** Sentry (optional, `SENTRY_DSN`) with `sendDefaultPii: false`.
+* **Browser errors:** the web app's error boundary and global `error`/`unhandledrejection`
+  handlers post to `POST /api/v1/client-errors` (public, 10/min/IP). The API logs a `WebClient`
+  warning and forwards to the same Sentry project, tagged with `VITE_RELEASE`. Reporting
+  same-origin keeps the CSP at `connect-src 'self'` and keeps a second vendor SDK out of the
+  browser; only the pathname is sent (query strings can hold reset/invite tokens).
 * **Health:** `/health` (liveness), `/health/ready` (DB + RabbitMQ), and `/health/queues`.
 * **Alarms:** API 5xx, latency, no healthy hosts, DB CPU/storage and RabbitMQ backlog → SNS email;
   terminal outbox/dead-letter failures are reported to Sentry

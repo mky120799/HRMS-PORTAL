@@ -1,6 +1,7 @@
 # Roles and permissions
 
-The portal now uses built-in roles mapped to explicit permissions. Routes should
+The portal uses built-in roles mapped to explicit permissions, plus workspace
+custom roles built from the same permissions. Routes should
 check permissions for day-to-day product access, while role checks are kept only
 where the role identity itself matters, such as platform-only access or
 protecting the last tenant administrator.
@@ -29,12 +30,60 @@ and the code checks the exact capability required by each action.
 `SUPER_ADMIN` is platform-only. Tenant admins can assign tenant roles, but not
 `SUPER_ADMIN`.
 
+## Who can assign which role (no escalation)
+
+Every role change — the Employees page, invitations, SSO group mapping and SCIM
+groups — goes through `RoleAssignmentService`:
+
+| Rule | Why |
+| --- | --- |
+| You can only grant a role whose permissions you hold yourself. | An HR_ADMIN cannot hand out payroll or security powers. |
+| Only an `ADMIN` (built-in, not a custom role) can grant `ADMIN` or change an existing admin. | Previously an HR_ADMIN could promote anyone to ADMIN. |
+| Invitations follow the same rules. | Otherwise anyone with `employees.manage` could invite an ADMIN account they control. |
+| You cannot change your own role. | |
+| The last active `ADMIN` cannot be demoted. | |
+| Identity providers never grant `ADMIN` and never change an existing admin. | |
+
+A change bumps the user's token version and revokes their sessions, and is audited as
+`ROLE_CHANGED` (a person) or `ROLE_SYNCED_FROM_IDP` (an identity provider).
+
+## Custom roles
+
+Settings → **Custom roles** (permission `roles.manage`, ADMIN only; changes need step-up).
+
+| Field | Meaning |
+| --- | --- |
+| Key | Permanent, `UPPER_SNAKE` (e.g. `REGIONAL_HR`). IdP mappings refer to it as `custom:REGIONAL_HR`. |
+| Name / description | Shown in pickers. |
+| Base role | Any built-in role except `ADMIN`. Decides pages and record scopes that depend on the role identity (e.g. a `MANAGER` base sees their direct reports). Stored as the user's `role`. |
+| Permissions | The exact permission list; replaces the base role's permissions. |
+
+- Not allowed in custom roles: `platform.manage`, `identity_providers.manage`,
+  `roles.manage` (`NON_DELEGABLE_PERMISSIONS`). Full administration stays with `ADMIN`.
+- Effective permissions are resolved on every request (cached 30 s per instance,
+  cleared at once on the instance that edits the role). Editing permissions therefore
+  applies within seconds without signing anyone out; changing the base role updates
+  every holder and revokes their sessions.
+- A deactivated (or missing) custom role grants **no** permissions — it does not fall
+  back to the base role, because custom roles are usually narrower than their base.
+- A role that is assigned to anyone cannot be deleted (409); deactivate it or reassign
+  people first.
+- Login, refresh and `GET /auth/me` return `customRoleId` and `permissions`; the web
+  app hides actions accordingly (the API still enforces everything).
+
+| Endpoint | Permission |
+| --- | --- |
+| `GET /roles` — permissions catalogue, built-in roles, custom roles with user counts | `roles.manage` or `employees.roles.manage` |
+| `POST /roles`, `PATCH /roles/:id`, `DELETE /roles/:id` | `roles.manage` + step-up |
+| `PATCH /employees/:id/role` with `{ role }` or `{ customRoleId }` | `employees.roles.manage` + step-up |
+| `POST /auth/invite` with `role` or `customRoleId` | `employees.manage` |
+
 ## Permission groups
 
 | Area | Permission examples |
 | --- | --- |
 | Platform | `platform.manage` |
-| Tenant/security | `tenant.settings.manage`, `tenant.billing.manage`, `security.manage`, `identity_providers.manage`, `audit.read` |
+| Tenant/security | `tenant.settings.manage`, `tenant.billing.manage`, `security.manage`, `identity_providers.manage`, `roles.manage`, `audit.read` |
 | Employees | `employees.read_full`, `employees.manage`, `employees.offboard`, `employees.roles.manage` |
 | Attendance | `attendance.roster.read` |
 | Leave | `leave.admin`, `leave.review` |
@@ -50,7 +99,7 @@ and the code checks the exact capability required by each action.
 | Role | Main permissions |
 | --- | --- |
 | `SUPER_ADMIN` | Platform management only. |
-| `ADMIN` | All tenant permissions, including `identity_providers.manage` (SSO/SCIM configuration), which no other role has. |
+| `ADMIN` | All tenant permissions, including `identity_providers.manage` (SSO/SCIM configuration) and `roles.manage` (custom roles), which no other role has. |
 | `HR_ADMIN` | Tenant settings, analytics, employee management, role changes, attendance roster, leave admin/review, documents, performance, notifications. |
 | `HR_MANAGER` | Analytics, employee read/manage, attendance roster, leave review, team documents, performance team/review. |
 | `PAYROLL_ADMIN` | Analytics, employee full read, attendance roster, payroll read/salary/run/finalize. |
@@ -73,19 +122,19 @@ and the code checks the exact capability required by each action.
 - Changing a user's role revokes their sessions; the old access token stops
   working within seconds (session check), not after 15 minutes.
 - Sensitive actions additionally use `@RequireStepUp()` (recent re-authentication
-  on the same session): role changes, salary changes, payroll finalisation,
+  on the same session): role changes, custom-role edits, salary changes, payroll finalisation,
   auth-policy changes, identity-provider changes and SCIM token rotation, admin
   MFA reset, and GDPR erasure.
-- IdP role mapping can assign any tenant role except `ADMIN`.
+- IdP role mapping (SSO group claims and SCIM groups) can assign any tenant role
+  except `ADMIN`, or a custom role as `custom:<KEY>`.
+- Use `can(user, permission)` / `canAny(...)` in services, never role names: they read
+  the user's effective permissions, so custom roles work everywhere.
 
-## Later upgrade path
-
-The current system uses fixed built-in roles. If customers need custom roles
-later, add a database-backed role model without changing feature code:
+## Design note
 
 ```text
-User -> assigned role -> permissions -> guarded API action
+User -> built-in role or custom role -> permissions -> guarded API action
 ```
 
-That is why feature code should depend on permissions, not hard-coded job
-titles.
+Feature code depends on permissions, not job titles, which is what made custom roles
+possible without touching feature modules.

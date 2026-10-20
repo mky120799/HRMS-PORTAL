@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { Layout } from './components/Layout';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { getAuth, hasPermission, hasRole, type Permission, type Role } from './lib/auth';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
@@ -28,16 +30,24 @@ const SecurityPage = lazy(() => import('./pages/SecurityPage').then((m) => ({ de
 const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage').then((m) => ({ default: m.AuditLogsPage })));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage').then((m) => ({ default: m.OnboardingPage })));
 
-const Loading = () => <div className="p-10 text-center text-muted-foreground">Loading…</div>;
+const Loading = () => (
+  <div role="status" className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
+    <Loader2 size={18} className="animate-spin" aria-hidden /> Loading…
+  </div>
+);
 
 // Client-side guards only shape navigation; every rule is enforced again by the API.
 function Protected() {
+  const { pathname } = useLocation();
   if (!getAuth()) return <Navigate to="/login" replace />;
   return (
     <Layout>
-      <Suspense fallback={<Loading />}>
-        <Outlet />
-      </Suspense>
+      {/* Keyed by path: a page crash is contained here and cleared by navigating elsewhere. */}
+      <ErrorBoundary key={pathname}>
+        <Suspense fallback={<Loading />}>
+          <Outlet />
+        </Suspense>
+      </ErrorBoundary>
     </Layout>
   );
 }

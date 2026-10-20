@@ -9,6 +9,7 @@ import { fmtDate } from '../lib/format';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { QueryErrorState } from '../components/QueryErrorState';
 
 type Subscription = {
   plan: string;
@@ -33,8 +34,8 @@ export function BillingPage() {
   const [params] = useSearchParams();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const sub = useQuery({ queryKey: ['subscription'], queryFn: async () => (await api.get<Subscription>('/tenants/subscription')).data });
-  const available = useQuery({ queryKey: ['billing-plans'], queryFn: async () => (await api.get<{ plan: string; available: boolean }[]>('/billing/plans')).data });
+  const sub = useQuery({ queryKey: ['subscription'], meta: { inlineError: true }, queryFn: async () => (await api.get<Subscription>('/tenants/subscription')).data });
+  const available = useQuery({ queryKey: ['billing-plans'], meta: { inlineError: true }, queryFn: async () => (await api.get<{ plan: string; available: boolean }[]>('/billing/plans')).data });
 
   useEffect(() => {
     if (params.get('status') === 'success') showToast('Payment received — your plan updates within a few seconds.', 'success');
@@ -51,10 +52,11 @@ export function BillingPage() {
   };
 
   const s = sub.data;
+  // Unknown subscription state: offer no purchase or plan-change buttons rather than guessing.
   const isPaid = s && (s.status === 'ACTIVE' || s.status === 'PAST_DUE');
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto py-6">
+    <div className="space-y-8 max-w-5xl mx-auto lg:py-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Billing & Subscription</h1>
         <p className="text-muted-foreground mt-2">Payments are handled securely by Stripe.</p>
@@ -69,6 +71,8 @@ export function BillingPage() {
         <CardContent>
           {sub.isLoading ? (
             <Loader2 className="animate-spin" />
+          ) : sub.isError ? (
+            <QueryErrorState title="Your subscription could not be loaded" error={sub.error} onRetry={() => sub.refetch()} />
           ) : (
             <div className="flex flex-wrap items-center gap-4">
               <div className="text-2xl font-bold">{s?.isTrialActive ? 'Free trial' : s?.plan}</div>
@@ -90,6 +94,10 @@ export function BillingPage() {
         )}
       </Card>
 
+      {available.isError && (
+        <QueryErrorState title="Plan availability could not be loaded" error={available.error} onRetry={() => available.refetch()} />
+      )}
+
       <div className="grid gap-6 md:grid-cols-3">
         {PLANS.map((p) => {
           const current = isPaid && s?.plan === p.plan;
@@ -110,7 +118,7 @@ export function BillingPage() {
               <CardFooter>
                 {current ? (
                   <Badge>Current plan</Badge>
-                ) : isPaid ? (
+                ) : !s ? null : isPaid ? (
                   <Button variant="outline" className="w-full" disabled={!!busy} onClick={() => go('portal', () => api.post('/billing/portal'))}>
                     Change plan
                   </Button>

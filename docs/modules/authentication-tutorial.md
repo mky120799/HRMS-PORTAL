@@ -212,6 +212,9 @@ Important:
 - Google Authenticator does not tell us who the user is.
 - It only proves the user has the authenticator device.
 - Our HRMS still handles the login.
+- Each code works only once. HRMS remembers the last 30-second time step it
+  accepted for each user, so a code someone saw over your shoulder (or a phishing
+  page relayed) cannot be used a second time, even within the same 30 seconds.
 
 ## 8. Backup codes
 
@@ -358,8 +361,9 @@ but only when the provider is limited to the company's own email domains —
 otherwise any account at a shared issuer such as Google could join the workspace.
 
 IdP groups can also set the HRMS role through the provider's role mapping
-(`HR Team = HR_ADMIN`). The mapping is applied at every sign-in. It can never
-grant `ADMIN`, and existing admins are never changed by it.
+(`HR Team = HR_ADMIN`, or `APAC HR = custom:REGIONAL_HR` for a custom role). The
+mapping is applied at every sign-in. It can never grant `ADMIN`, and existing
+admins are never changed by it.
 
 The built-in "Sign in with Google" button uses this same OIDC code path (Google
 is a standard OIDC issuer), so Google sign-ins get the same signature, nonce and
@@ -444,7 +448,11 @@ In this portal, SCIM is now implemented for basic user provisioning:
 - Okta/Entra calls `/scim/v2/Users`;
 - HRMS creates or updates both the `User` and `Employee` records;
 - deactivation disables the login and revokes sessions;
-- SCIM-created users do not receive a password by default.
+- SCIM-created users do not receive a password by default;
+- Okta/Entra can also push **groups** to `/scim/v2/Groups`. A group grants nothing
+  by itself: whenever membership changes, HRMS re-applies the role mapping to the
+  people affected. Leaving the last mapped group returns a role the IdP had set to
+  `EMPLOYEE`; a role an HR admin set by hand is left alone.
 
 ## 14. Sessions
 
@@ -592,12 +600,32 @@ Production HR systems should move toward permissions:
 User can finalize payroll if they have payroll.finalize
 ```
 
-This gives more control and prepares us for custom roles later.
+This gives more control and is what makes custom roles possible.
 
 In this portal, the backend permission map lives in
-`apps/server/src/common/auth/permissions.ts`, and the frontend uses a matching
-map in `apps/web/src/lib/auth.ts` so menus and buttons follow the same model as
-the API.
+`apps/server/src/common/auth/permissions.ts`. The server works out each user's
+effective permissions on every request and returns them at sign-in, so the web
+app's menus and buttons follow exactly what the API allows.
+
+### Custom roles
+
+A company can build its own role from permissions, for example "Regional HR":
+based on `HR_MANAGER`, with `employees.read_full` and `leave.review` but no
+payroll. The base role decides role-shaped behaviour (a `MANAGER` base sees their
+team); the permission list decides what actions are allowed.
+
+Two rules keep this safe:
+
+```text
+1. You can only give someone permissions you have yourself.
+2. Only an ADMIN can make someone an ADMIN.
+```
+
+Without rule 2, an HR admin could promote a second account they control to
+`ADMIN` and take over the workspace. The same rules apply to invitations, SSO
+group mapping and SCIM groups, because they all go through one service
+(`RoleAssignmentService`). Custom roles also cannot contain the admin-only
+permissions (`identity_providers.manage`, `roles.manage`).
 
 ## 16. Tenant auth policies
 

@@ -160,7 +160,8 @@ describe('Security', () => {
 
     it('locks the account after repeated failed logins', async () => {
       const s = await t.signup();
-      const ip = '192.0.2.10';
+      // Unique per run: with REDIS_URL, rate-limit counters outlive the test process.
+      const ip = `192.0.${parseInt(unique().slice(0, 2), 16)}.${parseInt(unique().slice(0, 2), 16)}`;
       for (let i = 0; i < 5; i++) {
         expect((await t.request('POST', '/auth/login', { ip, body: { tenantId: s.tenant.slug, email: s.email, password: 'wrong-password-1' } })).status).toBe(401);
       }

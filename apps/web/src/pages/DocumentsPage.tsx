@@ -50,11 +50,11 @@ function DocRow({ d, onDelete, showOwner }: { d: Doc; onDelete?: () => void; sho
         </div>
       </div>
       <div className="flex gap-1">
-        <Button variant="ghost" size="icon" onClick={() => downloadFile(`/documents/${d.id}/download`, d.title).catch((e) => showToast(getErrorMessage(e), 'error'))}>
+        <Button variant="ghost" size="icon" aria-label={`Download ${d.title}`} onClick={() => downloadFile(`/documents/${d.id}/download`, d.title).catch((e) => showToast(getErrorMessage(e), 'error'))}>
           <Download size={16} />
         </Button>
         {onDelete && (
-          <Button variant="ghost" size="icon" className="text-red-500" onClick={onDelete}>
+          <Button variant="ghost" size="icon" className="text-red-500" aria-label={`Delete ${d.title}`} onClick={onDelete}>
             <Trash2 size={16} />
           </Button>
         )}

@@ -86,6 +86,7 @@ Validated at boot by `apps/server/src/config/env.ts`.
 | --- | --- | --- |
 | `DATABASE_URL` | yes | add `sslmode=require` in production |
 | `RABBITMQ_URL` | yes | AMQP/AMQPS connection URL; Terraform supplies private Amazon MQ in AWS |
+| `REDIS_URL` | yes in production | `redis://` or `rediss://` (TLS); shared rate-limit counters across API instances. Terraform supplies ElastiCache (TLS + auth token); `docker-compose.prod.yml` runs `redis` with `REDIS_PASSWORD`. Optional in development (in-memory counters) |
 | `JWT_SECRET` | yes, ≥ 32 chars | root for all token keys |
 | `ENCRYPTION_KEY` | yes, 32 bytes base64 | back it up; losing it loses 2FA secrets/webhooks |
 | `FRONTEND_URL`, `API_PUBLIC_URL`, `CORS_ORIGINS` | yes (https in prod) | links in emails, public API callbacks, CORS allow-list |
@@ -97,5 +98,6 @@ Validated at boot by `apps/server/src/config/env.ts`.
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | optional | Google SSO |
 | `OIDC_CALLBACK_URL` | optional | Generic OIDC callback URL; defaults to `API_PUBLIC_URL/api/v1/auth/oidc/callback` |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*` | optional | billing |
-| `SENTRY_DSN` | optional | error tracking |
+| `SENTRY_DSN` | optional | error tracking (server errors and browser reports from `/client-errors`) |
+| `VITE_RELEASE` (web build arg) | optional | release tag on browser error reports; CI passes the image tag |
 | `ENABLE_SWAGGER` | optional | defaults off in production |

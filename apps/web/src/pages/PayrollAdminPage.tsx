@@ -8,6 +8,7 @@ import { fmtMoney, MONTHS } from '../lib/format';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
+import { QueryErrorRow } from '../components/QueryErrorState';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 
@@ -29,8 +30,8 @@ export function PayrollAdminPage() {
   const [editing, setEditing] = useState<{ id: string; values: Salary } | null>(null);
   const [warnings, setWarnings] = useState<{ name: string; message: string }[]>([]);
 
-  const salaries = useQuery({ queryKey: ['payroll', 'salaries'], queryFn: async () => (await api.get<SalaryRow[]>('/payroll/salaries')).data });
-  const run = useQuery({ queryKey: ['payroll', 'run', period], queryFn: async () => (await api.get<Run>('/payroll/runs', { params: period })).data });
+  const salaries = useQuery({ queryKey: ['payroll', 'salaries'], meta: { inlineError: true }, queryFn: async () => (await api.get<SalaryRow[]>('/payroll/salaries')).data });
+  const run = useQuery({ queryKey: ['payroll', 'run', period], meta: { inlineError: true }, queryFn: async () => (await api.get<Run>('/payroll/runs', { params: period })).data });
   const onError = (e: unknown) => showToast(getErrorMessage(e), 'error');
 
   const save = useMutation({
@@ -151,12 +152,13 @@ export function PayrollAdminPage() {
                   <TableCell>{fmtMoney(p.deductions)}</TableCell>
                   <TableCell className="font-semibold">{fmtMoney(p.netPay)}</TableCell>
                   <TableCell className="pr-6 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => downloadFile(`/payroll/payslips/${p.id}/pdf`, 'payslip.pdf').catch(onError)}>
+                    <Button variant="ghost" size="sm" aria-label="Download payslip PDF" onClick={() => downloadFile(`/payroll/payslips/${p.id}/pdf`, 'payslip.pdf').catch(onError)}>
                       <Download size={14} />
                     </Button>
                   </TableCell>
                 </TableRow>
               ))}
+              {run.isError && <QueryErrorRow colSpan={8} title="This month's payroll run could not be loaded" error={run.error} onRetry={() => run.refetch()} />}
               {run.data?.status === 'NOT_STARTED' && (
                 <TableRow>
                   <TableCell colSpan={8} className="h-20 text-center text-muted-foreground">
@@ -190,6 +192,7 @@ export function PayrollAdminPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {salaries.isError && <QueryErrorRow colSpan={7} title="Salary structures could not be loaded" error={salaries.error} onRetry={() => salaries.refetch()} />}
               {salaries.data?.map(({ employee: e, salary: s }) => {
                 const isEditing = editing?.id === e.id;
                 return (

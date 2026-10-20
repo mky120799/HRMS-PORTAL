@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { QueryErrorState } from '../components/QueryErrorState';
 import { Activity, ShieldCheck, ShieldAlert, Database, Trash, Edit, PlusCircle, LogIn, ExternalLink } from 'lucide-react';
 
 type AuditLog = {
@@ -63,9 +64,10 @@ export function AuditLogsPage() {
   const [action, setAction] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['audit', 'logs', category, action, page],
     placeholderData: keepPreviousData,
+    meta: { inlineError: true },
     queryFn: async () =>
       (
         await api.get<Paged<AuditLog>>('/audit', {
@@ -119,7 +121,7 @@ export function AuditLogsPage() {
   };
 
   return (
-    <div className="space-y-8 py-6">
+    <div className="space-y-8 lg:py-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
           <Activity className="text-indigo-600" />
@@ -170,6 +172,9 @@ export function AuditLogsPage() {
           )}
         </CardHeader>
         <CardContent>
+          {isError ? (
+            <QueryErrorState title="Audit logs could not be loaded" error={error} onRetry={() => refetch()} />
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -217,7 +222,8 @@ export function AuditLogsPage() {
               )}
             </TableBody>
           </Table>
-          {data && data.totalPages > 1 && (
+          )}
+          {!isError && data && data.totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
               <span>
                 Page {data.page} of {data.totalPages} · {data.total} events

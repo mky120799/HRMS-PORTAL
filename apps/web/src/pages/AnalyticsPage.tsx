@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { api } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { QueryErrorState } from '../components/QueryErrorState';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
 
@@ -33,8 +34,9 @@ function na(v: number | null | undefined, suffix = '') {
 }
 
 export function AnalyticsPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['analytics'],
+    meta: { inlineError: true },
     queryFn: async () => (await api.get('/analytics/overview')).data,
   });
   const { data: hiringData } = useQuery({
@@ -50,6 +52,15 @@ export function AnalyticsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => <div key={i} className="h-28 bg-slate-100 rounded-xl" />)}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-3xl font-bold tracking-tight">Workforce Analytics</h2>
+        <QueryErrorState title="Analytics could not be loaded" error={error} onRetry={() => refetch()} />
       </div>
     );
   }

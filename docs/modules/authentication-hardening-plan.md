@@ -8,7 +8,7 @@ The goal is not to copy one vendor. The goal is to support secure password
 login, MFA, sessions, tenant policies, permissions and provider-neutral
 enterprise SSO.
 
-## Status (2026-10-02, after completion work)
+## Status (2026-10-03, after custom roles, SCIM groups, Redis and TOTP replay)
 
 Every item below was checked against the code and covered by tests where noted.
 
@@ -18,21 +18,22 @@ Legend: `[x]` done · `[~]` partly done · `[ ]` not started
 | --- | --- | --- | --- |
 | 0 Foundation | 13 | 0 | 0 |
 | 1 Sessions | 16 | 0 | 0 |
-| 2 MFA | 14 | 0 | 0 |
+| 2 MFA | 15 | 0 | 0 |
 | 3 Tenant policies | 16 | 0 | 0 |
-| 4 Permissions | 13 | 0 | 1 (custom roles — deferred by design) |
+| 4 Permissions | 17 | 0 | 0 |
 | 5 Security events | 18 | 0 | 0 |
 | 6 OIDC SSO | 24 | 0 | 0 |
 | 7 SAML SSO | 18 | 0 | 0 |
-| 8 SCIM | 13 | 0 | 0 |
-| 9 Frontend | 17 | 0 | 0 |
+| 8 SCIM | 15 | 0 | 0 |
+| 9 Frontend | 19 | 0 | 0 |
 | 10 Documentation | 10 | 0 | 0 |
 | 11 Review fixes | 14 | 0 | 0 |
 | 12 Tests | 9 | 0 | 0 |
-| 13 Roadmap | 3 | 0 | 1 (Redis rate limiting — needs an infrastructure decision) |
+| 13 Roadmap | 4 | 0 | 0 |
 
-Everything planned is implemented and tested (101 unit, 61 API e2e). Two items
-remain open on purpose; see **What is left** at the end.
+Everything planned is implemented. The custom-roles / SCIM-groups work added new
+unit and e2e tests; a full verification pass is still to do (see Phase 12 and
+**What is left**).
 
 ## Phase 0: Current foundation
 
@@ -93,6 +94,9 @@ Goal: make MFA usable and recoverable in real companies.
 - [x] Notify user when MFA is enabled, disabled or reset
 - [x] Update security page UI for recovery codes
 - [x] Document MFA setup and recovery flow
+- [x] Each authenticator code works once: the accepted 30-second step is stored
+  (`User.lastTotpStep`) with a conditional update, so a code seen over a shoulder or
+  intercepted cannot be replayed within its window, even by two concurrent requests
 
 ## Phase 3: Tenant auth policies
 
@@ -133,11 +137,21 @@ Goal: move from simple role checks to a permission-based foundation.
 - [x] Apply permissions to leave, attendance, analytics, performance, tenant,
   billing, notification and compliance APIs
 - [x] Update frontend route/action visibility to use permissions
-- [ ] Add custom role data model later if needed
+- [x] Custom roles: `CustomRole` (key, name, base role, permission list) per workspace,
+  managed by the new `roles.manage` permission (ADMIN only) with step-up; effective
+  permissions resolved per request (30 s cache, cleared on edit)
+- [x] Custom roles can never hold `platform.manage`, `identity_providers.manage` or
+  `roles.manage`, and ADMIN cannot be a base role
+- [x] **No escalation** (`RoleAssignmentService`, the single place roles change): you can
+  only grant permissions you hold, only an ADMIN grants or changes ADMIN, never your own
+  role, last admin protected. This closed a hole where HR_ADMIN could promote anyone
+  (including themselves via a second account) to ADMIN — and the same hole in
+  invitations, where anyone with `employees.manage` could invite a new ADMIN
+- [x] Login, refresh and `/auth/me` return effective `permissions`; the web app uses them
 - [x] Update docs with role-to-permission matrix
 
-Note: the role→permission map is duplicated in `apps/web/src/lib/auth.ts`, so it
-must be kept in sync by hand until `/auth/me` returns permissions.
+Note: the web app still has a copy of the built-in role→permission map, used only
+as a fallback for sessions stored before the server returned `permissions`.
 
 Current built-in role model:
 
@@ -250,7 +264,10 @@ automatically.
 - [x] Add setup docs for Okta SCIM
 - [x] Add setup docs for Entra SCIM
 
-Not in scope yet: SCIM `/Groups`.
+- [x] SCIM `/Groups` (list/filter, get, create, replace, Okta/Entra PatchOp, delete)
+- [x] Group membership drives roles through the provider's role mapping (built-in role
+  or `custom:<KEY>`); losing the last mapped group returns an IdP-managed role to
+  EMPLOYEE, roles set by a person in HRMS are kept, admins are never changed
 
 ## Phase 9: Frontend work
 
@@ -273,6 +290,8 @@ Goal: make the auth system understandable and usable.
 - [x] Login page: company SSO option
 - [x] Login page: domain/workspace discovery
 - [x] Login page: clear MFA step
+- [x] Settings page: custom roles (create, edit permissions, deactivate, delete)
+- [x] Employees page: assign custom roles; "IdP" badge on roles set by an identity provider
 
 ## Phase 10: Documentation
 
@@ -339,8 +358,16 @@ Found and fixed while doing this:
 - [x] SCIM: auth, raw protocol shape, scim+json, Entra PATCH, ignored role attribute, tenant isolation
 - [x] Step-up guard (unit) and step-up flow bound to session (e2e)
 - [x] Regression test for each Phase 11 fix
+- [x] TOTP single use (unit + e2e), Redis rate-limit storage (shared counters across
+  instances, fallback when Redis is down)
+- [x] Custom roles, no-escalation rules (unit + e2e incl. invitations), SCIM groups
+  role sync, SSO mapping to custom roles (e2e)
 
-Totals: 101 unit tests; API e2e 61 (auth 15, security 27, workflows 19) — all passing.
+Totals at the last run (2026-10-03): 130 unit; API e2e 65 (auth 19, security 27,
+workflows 19) — all passing with `REDIS_URL` set. Still to do in the next test pass:
+re-run everything after the final changes, and make the lockout test in
+`security.e2e-spec.ts` use a unique IP (with Redis, counters outlive the test process,
+so an immediate local re-run hits 429).
 
 Not covered by automated tests: a full signed SAML round trip and live sign-in
 against real Okta / Entra / Google tenants. Do one manual test per IdP before
@@ -350,18 +377,18 @@ onboarding a customer on it (`auth-setup-guides.md`).
 
 - [x] Refresh token in an httpOnly `SameSite=Strict` cookie instead of `localStorage`
 - [x] Bind SSO `state` to a browser nonce cookie (login CSRF)
-- [ ] Redis-backed rate limiting so limits hold across API instances — needs a
-  Redis service (ElastiCache in Terraform, `redis` in docker-compose) and the
-  `ioredis` dependency; until then limits are per instance
+- [x] Redis-backed rate limiting so limits hold across API instances: one atomic Lua
+  script per hit (`RateLimitStorage`), ElastiCache (TLS + auth token) in Terraform,
+  `redis` in both compose files, `REDIS_URL` required in production. If Redis is
+  unreachable each instance falls back to in-memory limits (never unlimited), logs and
+  reports to Sentry; `/health/ready` shows `rateLimitStore`
 - [x] Instant revocation: access tokens' `sid` checked against the session table
   (30 s per-instance cache, cleared immediately on the revoking instance)
 
 ## What is left
 
-1. **Decide on Redis** for shared rate limiting (Phase 13). Needed before running
-   more than one API instance in production.
-2. **Manual IdP tests** — one real sign-in per IdP (Okta, Entra, Google) before a
-   customer depends on it.
-3. Optional later: custom roles data model (Phase 4), SCIM `/Groups`, TOTP code
-   replay prevention (a valid 6-digit code can currently be reused within its
-   30-second window), and parsing user agents into device names for the sessions list.
+1. **Test pass** — re-run unit + e2e after the final changes (see Phase 12), and
+   `terraform validate`/`plan` for the new ElastiCache resources (not run locally).
+2. **Manual IdP tests** — one real sign-in per IdP (Okta, Entra, Google), plus one SCIM
+   group push, before a customer depends on it.
+3. Optional later: parse user agents into device names for the sessions list.

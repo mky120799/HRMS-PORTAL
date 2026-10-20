@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { QueryErrorRow } from '../components/QueryErrorState';
 import { Input } from '../components/ui/input';
 
 type Tenant = {
@@ -32,6 +33,7 @@ export function SuperAdminPage() {
 
   const tenants = useQuery({
     queryKey: ['platform', 'tenants', search, page],
+    meta: { inlineError: true },
     queryFn: async () => (await api.get<Paged<Tenant>>('/platform/tenants', { params: { search: search || undefined, page, pageSize: 25 } })).data,
   });
   const setActive = useMutation({
@@ -96,6 +98,7 @@ export function SuperAdminPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {tenants.isError && <QueryErrorRow colSpan={5} title="Workspaces could not be loaded" error={tenants.error} onRetry={() => tenants.refetch()} />}
               {items.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="pl-6">

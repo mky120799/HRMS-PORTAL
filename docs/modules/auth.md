@@ -55,9 +55,9 @@ Related: [hardening plan & status](authentication-hardening-plan.md) ·
 | `POST /auth/sessions/revoke-all` | user | Revokes all other owned sessions |
 | `POST /auth/users/:id/revoke-sessions` | `security.manage` | Force logout for a tenant user |
 | `POST /auth/users/:id/reset-mfa` | `security.manage` + step-up | Clears MFA/recovery codes and revokes that user's sessions |
-| `GET /auth/me` | user | Profile + employee + tenant + unused recovery-code count |
+| `GET /auth/me` | user | Profile + employee + tenant + unused recovery-code count + `customRoleId` and effective `permissions` (also returned at login/refresh) |
 | `POST /auth/change-password` | user | Signs out other devices, returns a fresh session |
-| `POST /auth/invite` | `employees.manage`, seat limit | Creates the login; links to an employee with the same email or creates one |
+| `POST /auth/invite` | `employees.manage`, seat limit | Creates the login with `role` or `customRoleId` (no-escalation rules apply); links to an employee with the same email or creates one |
 | `POST /auth/accept-invite` | public | Sets password; link becomes invalid |
 | `POST /auth/reset-password-request` | public, 5/min/IP | Same response whether or not the account exists |
 | `POST /auth/reset-password` | public | Sets password; signs out all sessions |
@@ -78,6 +78,8 @@ Related: [hardening plan & status](authentication-hardening-plan.md) ·
 | `GET /audit?category=security&action=…` | `audit.read` | Security-event view (paged) |
 | `GET /scim/v2/ServiceProviderConfig` · `ResourceTypes` · `Schemas` | public | SCIM metadata |
 | `GET/POST /scim/v2/Users` · `GET/PUT/PATCH/DELETE /scim/v2/Users/:id` | SCIM bearer token, 600/min/IP | Raw SCIM 2.0 JSON (`application/scim+json` accepted); DELETE/`active:false` deactivates and revokes sessions |
+| `GET/POST /scim/v2/Groups` · `GET/PUT/PATCH/DELETE /scim/v2/Groups/:id` | SCIM bearer token | Groups and members; membership changes re-apply the role mapping |
+| `GET/POST/PATCH/DELETE /roles` | `roles.manage` + step-up to change (`GET` also `employees.roles.manage`) | Custom roles; see `roles-and-permissions.md` |
 
 ## Rules & safeguards
 * **Password policy:** tenant-configurable minimum length (default 10) with
@@ -114,6 +116,11 @@ Related: [hardening plan & status](authentication-hardening-plan.md) ·
   TTL and the tenant's absolute session lifetime. If configured, the idle timeout revokes
   sessions whose `lastUsedAt` is too old.
 * **2FA secrets** are encrypted at rest (AES-256-GCM, `CryptoService`).
+* **Authenticator codes are single use.** Only the current 30-second step is accepted (no
+  drift window), and the accepted step is stored in `User.lastTotpStep` with a conditional
+  update (`lastTotpStep IS NULL OR < step`). A code that was shoulder-surfed or phished in
+  real time cannot be replayed, and two concurrent requests with one code cannot both
+  succeed. Applies to login, step-up, enabling/disabling MFA and regenerating recovery codes.
 * **2FA recovery codes** are generated when MFA is enabled, shown once, stored as bcrypt
   hashes and consumed with a conditional update (`usedAt IS NULL`), so a code works exactly
   once even under concurrency. Regenerating codes invalidates unused old codes.
@@ -121,7 +128,7 @@ Related: [hardening plan & status](authentication-hardening-plan.md) ·
   Users who arrive later (invite, SCIM, JIT) receive an `mfa_enroll` token after their first
   factor and must enrol before getting a session. While required, users cannot turn MFA off.
 * **Step-up:** `@RequireStepUp()` routes need an `x-step-up-token` from `POST /auth/step-up`
-  (≤ 5 min old, same user, tenant and session). Applied to role changes, salary changes,
+  (≤ 5 min old, same user, tenant and session). Applied to role changes, custom-role edits, salary changes,
   payroll finalisation, auth-policy changes, identity-provider changes and SCIM token
   rotation, admin MFA reset and GDPR erasure. The web app prompts and retries automatically
   on `403 { code: "STEP_UP_REQUIRED" }`.
@@ -155,10 +162,13 @@ Related: [hardening plan & status](authentication-hardening-plan.md) ·
   hash is inside the signed state; callbacks fail in any other browser (login CSRF).
 * **JIT provisioning** creates a missing user (with linked employee, seat limit enforced)
   only when the provider has `jitProvisioning` **and** at least one allowed domain.
-* **Role mapping:** `roleMapping` (`{ "<IdP group>": "<ROLE>" }`, first match wins,
-  case-insensitive) sets the role on JIT creation and re-syncs it at each SSO sign-in
-  (other sessions revoked on change, `ROLE_SYNCED_FROM_IDP` audited). `ADMIN` can never be
-  granted and existing admins are never changed.
+* **Role mapping:** `roleMapping` (`{ "<IdP group>": "<ROLE>" | "custom:<KEY>" }`, first
+  match wins, case-insensitive) is applied after JIT creation, at each SSO sign-in and on
+  every SCIM group membership change, always through `RoleAssignmentService` (sessions
+  revoked on change, `ROLE_SYNCED_FROM_IDP` audited). `ADMIN` can never be granted and
+  existing admins are never changed. Roles an IdP set are marked `roleManagedBy =
+  "idp:<providerId>"`; only those return to `EMPLOYEE` when the user leaves every mapped
+  SCIM group. A mapping to an inactive custom role is skipped and logged.
 * **SAML SSO** uses `@node-saml/node-saml` for metadata, signature, issuer, audience and
   expiry. HRMS also verifies `Response/@Destination` and the bearer
   `SubjectConfirmationData/@Recipient` against the ACS URL (the library does not), records
@@ -172,11 +182,22 @@ Related: [hardening plan & status](authentication-hardening-plan.md) ·
   validated with zod; unknown attributes (e.g. a role) are ignored, so SCIM-created users are
   always `EMPLOYEE` with an empty `passwordHash`. Responses are raw SCIM JSON with RFC 7644
   error bodies. Create/update/deactivate update both `User` and `Employee`, respect the seat
-  limit, write audit events and revoke sessions on deactivation.
+  limit, write audit events and revoke sessions on deactivation. **Groups** are stored per
+  provider (`ScimGroup`, `ScimGroupMember`); they grant nothing themselves — their names
+  feed the role mapping. Members must belong to the workspace (others are ignored).
 * **Invite** respects the plan's seat limit (`EmployeeLimitGuard`).
-* **Roles and permissions:** built-in roles map to explicit permissions. API routes use
+* **Roles and permissions:** built-in roles map to explicit permissions; workspace custom
+  roles carry their own permission list on a built-in base role. Effective permissions are
+  resolved per request in `JwtStrategy` (`AuthUser.permissions`). API routes use
   `@Permissions(...)`; `@Roles(...)` is reserved for role identity cases such as platform
-  routes. See `docs/modules/roles-and-permissions.md`.
+  routes. Every role change (people, invitations, SSO, SCIM) goes through
+  `RoleAssignmentService`: no granting permissions you lack, only ADMIN grants ADMIN, no
+  self-change, last admin protected. See `docs/modules/roles-and-permissions.md`.
+* **Rate limits are shared across instances** through Redis (`REDIS_URL`): one atomic Lua
+  script per hit, keys `hrms:throttle:<name>:<key>`. Without Redis (dev/tests) counters are
+  in memory; if Redis fails at runtime each instance falls back to in-memory counters —
+  limits still apply, per instance — and the error is logged and sent to Sentry.
+  `/health/ready` reports `rateLimitStore` (`redis`, `memory` or `memory-fallback`).
 
 ## Failure modes & edge cases
 * Same email in two workspaces → allowed; the workspace field disambiguates.
@@ -188,7 +209,11 @@ Related: [hardening plan & status](authentication-hardening-plan.md) ·
   browsers treat `http://localhost` as secure for development.
 * Clock skew: JWT expiry uses server time; OIDC tolerates `iat` up to 5 min ahead; SAML
   accepts 2 min clock skew.
-* Rate limits are per API instance (in-memory throttler storage); see the plan's Phase 13.
+* Redis down → rate limits continue per instance (`rateLimitStore: memory-fallback` in
+  `/health/ready`); with N instances an attacker gets up to N× the attempts until Redis is
+  back. Account lockout is in the database and unaffected.
+* Custom role deactivated → its holders keep signing in but have no permissions beyond
+  self-service until reassigned.
 
 ## Security event taxonomy
 
@@ -211,7 +236,9 @@ Authentication security events are recorded in the audit log and shown under Aud
 | `MFA_RECOVERY_CODE_USED`, `MFA_RECOVERY_CODES_REGENERATED`, `ADMIN_MFA_RESET` | Recovery/admin MFA operations |
 | `AUTH_POLICY_UPDATED` | Tenant authentication policy changed |
 | `IDENTITY_PROVIDER_CREATED`, `IDENTITY_PROVIDER_UPDATED`, `SCIM_TOKEN_ROTATED` | Enterprise SSO/SCIM configuration changed |
-| `SSO_USER_PROVISIONED`, `ROLE_SYNCED_FROM_IDP`, `SCIM_USER_*` | Identity-provider driven account changes |
+| `SSO_USER_PROVISIONED`, `ROLE_SYNCED_FROM_IDP`, `SCIM_USER_*`, `SCIM_GROUP_*` | Identity-provider driven account and group changes |
+| `ROLE_CHANGED` | A person changed someone's role (old/new role and custom role) |
+| `CUSTOM_ROLE_CREATED`, `CUSTOM_ROLE_UPDATED`, `CUSTOM_ROLE_DELETED` | Custom role definitions changed |
 
 User-facing notifications (in-app + email): `AUTH_NEW_SESSION`, `AUTH_PASSWORD_CHANGED`,
 `AUTH_PASSWORD_RESET`, `AUTH_MFA_ENABLED/DISABLED/ADMIN_RESET`,
@@ -219,7 +246,10 @@ User-facing notifications (in-app + email): `AUTH_NEW_SESSION`, `AUTH_PASSWORD_C
 `AUTH_SUSPICIOUS_ACTIVITY` for lockouts and token reuse.
 
 ## Tests
-* `test/auth.e2e-spec.ts` (15) — httpOnly refresh cookie, instant logout/device revocation,
+* `test/auth.e2e-spec.ts` (19) — single-use authenticator codes, custom roles (exact
+  permissions, live edits, inactive grants nothing, non-delegable refused), no-escalation
+  (HR cannot mint admins by role change or invitation), SCIM groups role sync/revert/admin
+  protection, SSO mapping to custom roles, httpOnly refresh cookie, instant logout/device revocation,
   2FA lockout that a known password cannot reset, single-use recovery codes, policy-required
   MFA enrolment and blocked turn-off, single-use SSO exchange codes, no enumeration with
   password login disabled, password history, step-up bound to the session, ADMIN-only IdP
@@ -234,7 +264,9 @@ User-facing notifications (in-app + email): `AUTH_NEW_SESSION`, `AUTH_PASSWORD_C
   `modules/auth/oidc-auth.service.spec.ts` (real RSA keys: signature, issuer, audience, nonce,
   expiry, `alg`, `kid` rotation, `email_verified`, browser binding),
   `modules/auth/saml-checks.spec.ts`, `modules/auth/sso-mapping.spec.ts`,
-  `modules/auth/two-factor.service.spec.ts`.
+  `modules/auth/two-factor.service.spec.ts` (TOTP replay), `common/auth/role-assignment.service.spec.ts`,
+  `common/auth/role-permissions.service.spec.ts`, `common/rate-limit/rate-limit.storage.spec.ts`
+  (Redis cases run with `REDIS_TEST_URL`).
 
 ## Interview talking points
 * "Why separate keys *and* a `typ` claim?" — defence in depth; either alone prevents token

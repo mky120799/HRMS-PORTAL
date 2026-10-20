@@ -557,7 +557,7 @@ export function SettingsPage() {
               <span>
                 {fmtDay(h.date)} — {h.name}
               </span>
-              <Button variant="ghost" size="icon" onClick={() => removeHoliday.mutate(h.id)}>
+              <Button variant="ghost" size="icon" aria-label={`Remove holiday ${h.name}`} onClick={() => removeHoliday.mutate(h.id)}>
                 <Trash2 size={14} />
               </Button>
             </div>
@@ -565,7 +565,7 @@ export function SettingsPage() {
           <div className="flex gap-2">
             <Input type="date" className="w-44" value={newHoliday.date} onChange={(e) => setNewHoliday((h) => ({ ...h, date: e.target.value }))} />
             <Input placeholder="Holiday name" value={newHoliday.name} onChange={(e) => setNewHoliday((h) => ({ ...h, name: e.target.value }))} />
-            <Button size="sm" variant="outline" disabled={!newHoliday.date || !newHoliday.name} onClick={() => addHoliday.mutate()}>
+            <Button size="sm" variant="outline" aria-label="Add holiday" disabled={!newHoliday.date || !newHoliday.name} onClick={() => addHoliday.mutate()}>
               <Plus size={14} />
             </Button>
           </div>

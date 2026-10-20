@@ -47,10 +47,10 @@ export function AiChatWidget() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-4">
+    <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end gap-4">
       {/* Chat Window */}
       {open && (
-        <div className="w-[350px] h-[480px] bg-white rounded-2xl shadow-2xl border border-slate-200/80 flex flex-col overflow-hidden animate-fade-in">
+        <div className="w-[calc(100vw-2rem)] max-w-[350px] h-[min(480px,calc(100dvh-7rem))] bg-white rounded-2xl shadow-2xl border border-slate-200/80 flex flex-col overflow-hidden animate-fade-in">
           {/* Header */}
           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2.5 text-white">
@@ -62,8 +62,8 @@ export function AiChatWidget() {
                 <div className="text-[10px] text-indigo-200">Powered by Gemini AI</div>
               </div>
             </div>
-            <button onClick={() => setOpen(false)} className="text-white/80 hover:text-white transition-colors">
-              <X size={18} />
+            <button onClick={() => setOpen(false)} className="text-white/80 hover:text-white transition-colors" aria-label="Close HR assistant">
+              <X size={18} aria-hidden />
             </button>
           </div>
 
@@ -118,6 +118,7 @@ export function AiChatWidget() {
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() || loading}
+                aria-label="Send message"
                 className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

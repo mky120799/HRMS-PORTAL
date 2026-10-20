@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
+import { QueryErrorRow } from '../components/QueryErrorState';
 import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
@@ -75,6 +76,7 @@ export function EmployeesPage() {
 
   const list = useQuery({
     queryKey: ['employees', search, page],
+    meta: { inlineError: true },
     queryFn: async () => (await api.get<Paged<Employee>>('/employees', { params: { search: search || undefined, page, pageSize: 20 } })).data,
   });
   const managers = useQuery({
@@ -322,7 +324,8 @@ export function EmployeesPage() {
                     )}
                   </TableRow>
                 ))}
-                {!list.isLoading && items.length === 0 && (
+                {list.isError && <QueryErrorRow colSpan={5} title="Employees could not be loaded" error={list.error} onRetry={() => list.refetch()} />}
+                {!list.isLoading && !list.isError && items.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
                       No employees found.

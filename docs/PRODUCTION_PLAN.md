@@ -54,6 +54,25 @@ module docs.
   dead shared package; `npm audit fix`. High advisories: 16 → 3 (the remaining 3 are the same
   Prisma CLI-only issue).
 
+### P2 — Frontend hardening (done)
+
+| Finding | Fix |
+| --- | --- |
+| Toast CSS classes were never defined → every success/error message rendered as unstyled text at the bottom of the page | Fixed-position, `aria-live` toast stack; errors stay 7 s and can be dismissed (`apps/web/src/lib/toast.tsx`) |
+| No error boundary → any render error, or a missing chunk after a deploy, blanked the whole app | Root boundary + per-route boundary keyed by path, so the sidebar keeps working (`components/ErrorBoundary.tsx`) |
+| Tabs opened before a release requested deleted `/assets/*.js` chunks | One guarded reload (30 s window, no loop), then a "new version available" screen (`lib/monitoring.ts`) |
+| Failed requests rendered as real data ("0 people", empty tables, blank charts) | `QueryErrorState` / `QueryErrorRow` with retry on dashboard, analytics, audit logs, billing, profile, employees, leave, payroll, super admin; a deduplicated global toast for outages (network / 5xx) on every other query |
+| React Query retried 4xx answers three times | Retry only outages, at most twice; 30 s `staleTime` |
+| No browser error reporting | `POST /api/v1/client-errors` (public, 10/min/IP, zod-validated, control chars stripped) → server log + the existing Sentry project. Same-origin, so the CSP stays `connect-src 'self'`; only the pathname is sent because query strings carry reset/invite tokens |
+| Unusable on phones: fixed 260 px sidebar and `ml-[260px]` content | Slide-in drawer below `lg` (Escape/backdrop/navigation close it); responsive padding; dialogs scroll within the viewport; AI chat fits a 375 px screen |
+| Dashboard showed a hard-coded "+12% from last month" and Quick Action buttons that did nothing | Trend removed; actions are permission-aware links |
+| Profile showed hard-coded "HQ (Global Operations)", "April 2026", the raw tenant UUID and a dead "Edit Profile" button | Real designation, department, joining date, workspace name and 2FA status from `/auth/me`; link to Security |
+| Icon-only buttons had no accessible name | `aria-label`s on download/delete/add/menu/profile buttons |
+
+Verified in Chromium against the production build and a real API (desktop 1440 px and iPhone 13):
+inline errors on forced 500s, one toast on a refused connection, reload-then-message on a 404
+chunk with the report reaching `/client-errors`, no horizontal scroll on eight pages.
+
 ## 2. Upgrading the existing deployment
 
 The migration `20260928000000_production_hardening` is additive and was tested against data in
@@ -92,11 +111,12 @@ Ordered by value to a paying customer.
 | Priority | Item | Why |
 | --- | --- | --- |
 | High | Statutory payroll depth: employer PF/ESI, professional-tax slabs, tax projection, bank payout file | Needed before payroll replaces the customer's existing process |
-| High | Redis-backed rate limiting and a small cache layer | Correct limits across multiple API instances (the httpOnly refresh cookie, browser-bound SSO state, single-use SSO codes and instant session revocation are done — see `modules/authentication-hardening-plan.md`) |
+| Medium | Shared cache / pub-sub for session revocation and permission edits | Today other instances apply them within 30 s; Redis is now available, so this is a small step (Redis rate limiting, custom roles, SCIM groups and single-use TOTP are done — see `modules/authentication-hardening-plan.md`) |
 | Medium | PostgreSQL Row-Level Security as a second isolation layer | Defence in depth for tenant data |
 | Medium | Separate worker service for queues | Isolate background load from API latency; dead-letter and terminal-failure alerting are already configured |
 | Medium | Attendance regularisation, shifts, geo/IP office check-in | Common customer requests |
 | Medium | Bulk employee import (CSV) with validation report | Faster onboarding of new customers |
 | Medium | Audit logs to write-once storage (S3 Object Lock) | Tamper evidence for compliance audits |
-| Low | Accessibility pass (labelled inputs, focus management), i18n | Enterprise procurement requirements |
+| Medium | Browser tests for payroll run/finalise, leave approve/reject, hiring stage moves, and a mobile viewport | The Playwright suite covers sign-up, login and careers only; these are the flows a customer notices breaking |
+| Low | Accessibility pass (labelled form inputs, focus management, contrast audit), i18n | Enterprise procurement requirements; icon buttons, toasts and the nav drawer are already labelled |
 | Low | OpenAPI-generated typed client for the web app | Removes a class of front/back contract bugs |

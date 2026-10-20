@@ -323,7 +323,7 @@ export function HiringPage() {
                   </TableCell>
                   <TableCell className="pr-6 text-right space-x-1">
                     {a.resumeFilename && (
-                      <Button variant="ghost" size="sm" onClick={() => downloadFile(`/hiring/applications/${a.id}/resume`, a.resumeFilename!).catch(onError)}>
+                      <Button variant="ghost" size="sm" aria-label="Download resume" onClick={() => downloadFile(`/hiring/applications/${a.id}/resume`, a.resumeFilename!).catch(onError)}>
                         <Download size={14} />
                       </Button>
                     )}

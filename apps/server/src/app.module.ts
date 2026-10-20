@@ -16,6 +16,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { AuditInterceptor } from './common/audit/audit.interceptor';
 import { HealthModule } from './modules/health/health.module';
+import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { EmployeesModule } from './modules/employees/employees.module';
@@ -51,6 +52,7 @@ import { RateLimitStorage } from './common/rate-limit/rate-limit.storage';
     CommonModule,
     AuditModule,
     HealthModule,
+    MonitoringModule,
     AuthModule,
     TenantsModule,
     EmployeesModule,
